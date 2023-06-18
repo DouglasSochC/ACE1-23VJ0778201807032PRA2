@@ -43,7 +43,14 @@ ENDM
 ; D: Sirve para solicitar una entrada a traves del teclado, ademas una vez ingresada la entrada
 ; se debe de dar ENTER para seguir la ejecucion
 ; P1: buffer = Buffer de entrada
-mEntradaT MACRO buffer
+; P2: sz = Se indica la entrada maxima para el buffer
+mEntradaT MACRO buffer, sz
+    ; Se modifica la cantidad maxima que puede recibir el buffer
+    MOV DI, offset buffer
+    MOV AL, sz
+    MOV [DI], AL
+
+    ; Se solicita la entrada
     MOV DX, offset buffer
     MOV AH, 0A
     INT 21
@@ -62,6 +69,27 @@ mImprimirBuffer MACRO buffer
   MOV DX, DI
   MOV AH, 40
   INT 21
+ENDM
+
+; S: Copiar A Variable
+; D: Se utiliza para copiar la informacion que contiene el buffer a una variable declarada en el segmento de datos
+; P1: str1 = Variable a recibir y almacenar los datos
+; P2: buffer = Buffer de entrada
+mCopiarAVar MACRO str1, buffer
+  LOCAL L_COPIAR
+
+  MOV SI, offset str1 ; Se almacena la posicion en memoria de la variable
+  MOV DI, offset buffer ; Se almacena la posicion en memoria del buffer
+  INC DI  ; Se posiciona en el segundo byte para determinar el tamanio del buffer
+  MOV CX, [DI]  ; Se almacena en CX el tamanio de la cadena de enterada del buffer para realizar el LOOP
+  INC DI  ; Se posiciona en el contenido del buffer
+
+  L_COPIAR:
+    MOV AL, [DI] ; Se obtiene el caracter del buffer
+    MOV [SI], AL ; Se almacena el caracter en la posicion en memoria
+    INC SI ; Se incrementa en 1
+    INC DI ; Se incrementa en 1
+    LOOP L_COPIAR ; Le resta 1 a CX y verifica que CX no sea 0, si no es 0 va a la etiqueta y si es 0 sigue de largo
 ENDM
 
 ; S: Comparar Cadenas
@@ -101,31 +129,51 @@ ENDM
 ; ********
 .MODEL SMALL
 .STACK
-.RADIX 16 ; Cambiamos la base numérica a hexadecimal
-.DATA ;Aqui se predifine el segmento de dato osea aqui van a estar las variables de alto nivel
+.RADIX 16
+.DATA
 
   ; Mensaje Inicial
   msg_l1 db "Universidad de San Carlos de Guatemala", 0AH, 0DH, "$"
   msg_l2 db "Facultad de Ingenieria", 0AH, 0DH, "$"
   msg_l3 db "Escuela de Vacaciones", 0AH, 0DH, "$"
   msg_l4 db "Arquitectura de Computadoras y Ensambladores 1", 0AH, 0DH, "$"
-  msg_l5 db 0AH, 0DH, "$"
-  msg_l6 db "Nombre: Douglas Alexander Soch Catalan", 0AH, 0DH, "$"
-  msg_l7 db "Carne: 201807032", 0AH, 0DH, "$"
+  msg_l5 db "Nombre: Douglas Alexander Soch Catalan", 0AH, 0DH, "$"
+  msg_l6 db "Carne: 201807032", 0AH, 0DH, "$"
+  salto_linea db 0AH, 0DH, "$"
 
   ; Menu Principal
-  menu_l1 db "*********************", 0AH, 0DH, "$"
-  menu_l2 db "(P)roductos", 0AH, 0DH, "$"
-  menu_l3 db "(V)entas", 0AH, 0DH, "$"
-  menu_l4 db "(H)erramientas", 0AH, 0DH, "$"
-  menu_l5 db "*********************", 0AH, 0DH, "$"
-  opcion_1 db "P"
-  opcion_2 db "V"
-  opcion_3 db "H"
-  
+  menu_pri_l1 db "*********************", 0AH, 0DH, "$"
+  menu_pri_l2 db "(P)roductos", 0AH, 0DH, "$"
+  menu_pri_l3 db "(V)entas", 0AH, 0DH, "$"
+  menu_pri_l4 db "(H)erramientas", 0AH, 0DH, "$"
+  menu_pri_l5 db "*********************", 0AH, 0DH, "$"
+  opcion_pri_1 db "P"
+  opcion_pri_2 db "V"
+  opcion_pri_3 db "H"
+
+  ; Menu Producto
+  menu_pro_l1 db "*********************", 0AH, 0DH, "$"
+  menu_pro_l2 db "(C)rear", 0AH, 0DH, "$"
+  menu_pro_l3 db "(E)liminar", 0AH, 0DH, "$"
+  menu_pro_l4 db "(M)ostrar", 0AH, 0DH, "$"
+  menu_pro_l5 db "*********************", 0AH, 0DH, "$"
+  opcion_pro_1 db "C"
+  opcion_pro_2 db "E"
+  opcion_pro_3 db "M"
+
+  ; Crear producto
+  msg_crear_pro_l1 db "**********************", 0AH, 0DH, "$"
+  msg_crear_pro_l2 db "CREANDO PRODUCTO NUEVO", 0AH, 0DH, "$"
+  msg_crear_pro_l3 db "Codigo: ", "$"
+  msg_crear_pro_l4 db "Nombre: ", "$"
+  msg_crear_pro_l5 db "Precio: ", "$"
+  msg_crear_pro_l6 db "Unidad: ", "$"
+  msg_crear_pro_l7 db "**********************", 0AH, 0DH, "$"
+
+  ; Util
   buffer_entrada db 20, 00, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
   comando db 13 dup(?)
-  
+
   ; Estructura del producto
   prod_cod db 04 dup(0)
   prod_nombre db 32 dup(0)
@@ -146,9 +194,9 @@ ENDM
       mImprimirVar msg_l2
       mImprimirVar msg_l3
       mImprimirVar msg_l4
+      mImprimirVar salto_linea
       mImprimirVar msg_l5
       mImprimirVar msg_l6
-      mImprimirVar msg_l7
       ;FIN - Se imprime el mensaje inicial
 
       ; ENTER
@@ -163,22 +211,22 @@ ENDM
 
       ; Se imprime el menu principal
       mLimpiarC
-      mImprimirVar menu_l1
-      mImprimirVar menu_l2
-      mImprimirVar menu_l3
-      mImprimirVar menu_l4
-      mImprimirVar menu_l5
+      mImprimirVar menu_pri_l1
+      mImprimirVar menu_pri_l2
+      mImprimirVar menu_pri_l3
+      mImprimirVar menu_pri_l4
+      mImprimirVar menu_pri_l5
 
       ; Se espera la opcion elegida
       mComandoT 1, comando
 
-      mCompCads comando, opcion_1, 1
+      mCompCads comando, opcion_pri_1, 1
       JE PRODUCTOS
 
-      mCompCads comando, opcion_2, 1
+      mCompCads comando, opcion_pri_2, 1
       JE VENTAS
 
-      mCompCads comando, opcion_3, 1
+      mCompCads comando, opcion_pri_3, 1
       JE HERRAMIENTAS
 
       JMP MENU
@@ -186,12 +234,70 @@ ENDM
     MENU ENDP
 
     PRODUCTOS PROC
-      ; Pedir nombre
-      ; Pedir precio
-      ; Pedir unidades
+
+      ; Menu del producto
       mLimpiarC
-      mEntradaT buffer_entrada
+      mImprimirVar menu_pro_l1
+      mImprimirVar menu_pro_l2
+      mImprimirVar menu_pro_l3
+      mImprimirVar menu_pro_l4
+      mImprimirVar menu_pro_l5
+      mComandoT 1, comando
+
+      mCompCads comando, opcion_pro_1, 1
+      JE CREAR_PRODUCTO
+
+      mCompCads comando, opcion_pro_2, 1
+      JE ELIMINAR_PRODUCTO
+
+      mCompCads comando, opcion_pro_3, 1
+      JE MOSTRAR_PRODUCTO
+
+      JMP PRODUCTOS
+
     PRODUCTOS ENDP
+
+    CREAR_PRODUCTO PROC
+
+      mLimpiarC
+      mImprimirVar msg_crear_pro_l1
+      mImprimirVar msg_crear_pro_l2
+
+      ; Pedir codigo
+      mImprimirVar msg_crear_pro_l3
+      mEntradaT buffer_entrada, 05
+      mCopiarAVar prod_cod, buffer_entrada
+      mImprimirVar salto_linea
+
+      ; Pedir nombre
+      mImprimirVar msg_crear_pro_l4
+      mEntradaT buffer_entrada, 21
+      mCopiarAVar prod_nombre, buffer_entrada
+      mImprimirVar salto_linea
+
+      ; Pedir precio
+      mImprimirVar msg_crear_pro_l5
+      mEntradaT buffer_entrada, 03
+      mCopiarAVar prod_precio, buffer_entrada
+      mImprimirVar salto_linea
+
+      ; Pedir unidad
+      mImprimirVar msg_crear_pro_l6
+      mEntradaT buffer_entrada, 03
+      mCopiarAVar prod_unidad, buffer_entrada
+      mImprimirVar salto_linea
+
+      mImprimirVar msg_crear_pro_l7
+
+    CREAR_PRODUCTO ENDP
+
+    ELIMINAR_PRODUCTO PROC
+
+    ELIMINAR_PRODUCTO ENDP
+
+    MOSTRAR_PRODUCTO PROC
+
+    MOSTRAR_PRODUCTO ENDP
 
     VENTAS PROC
 
