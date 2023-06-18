@@ -31,62 +31,60 @@ ENDM
 ; D: Se encarga de leer un comando ingresado por el usuario a traves del teclado
 ; P1: sz = Tamanio maximo de caracteres a ingresar en consola
 ; P2: var = Variable en donde se almacenan los datos digitados en consola
-mComandoT MACRO sz,var
+mComandoT MACRO sz
     MOV AH,3F
     MOV BX,00
     MOV CX,sz
-    LEA DX,var
+    LEA DX,comando
     INT 21
 ENDM
 
 ; S: Entrada Teclado
-; D: Sirve para solicitar una entrada a traves del teclado, ademas una vez ingresada la entrada
-; se debe de dar ENTER para seguir la ejecucion
-; P1: buffer = Buffer de entrada
-; P2: sz = Se indica la entrada maxima para el buffer
-mEntradaT MACRO buffer, sz
-    ; Se modifica la cantidad maxima que puede recibir el buffer
-    MOV DI, offset buffer
+; D: Sirve para solicitar una entrada a traves del teclado y almacenarla en un buffer,
+; ademas una vez ingresada la entrada se debe de dar ENTER para seguir la ejecucion.
+; P1: sz = Se indica la entrada maxima para el buffer
+mEntradaT MACRO sz
+    ; Se modifica la cantidad maxima que puede recibir el buffer_entrada
+    MOV DI, offset buffer_entrada
     MOV AL, sz
     MOV [DI], AL
 
     ; Se solicita la entrada
-    MOV DX, offset buffer
+    MOV DX, offset buffer_entrada
     MOV AH, 0A
     INT 21
 ENDM
 
 ; S: Imprimir Buffer
-; D: Se utiliza para imprimir en pantalla el contenido que tiene el buffer
-; P1: buffer = Buffer de entrada
-mImprimirBuffer MACRO buffer
+; D: Se utiliza para imprimir en pantalla el contenido que tiene el buffer_entrada
+mImprimirBuffer MACRO
   MOV BX, 01
-  MOV DI, offset buffer
-  INC DI ; Nos posicionamos en el segundo byte del buffer
+  MOV DI, offset buffer_entrada
+  INC DI ; Nos posicionamos en el segundo byte del buffer_entrada
   MOV CH, 00
   MOV CL, [DI] ; Se obtiene el tamanio de la cadena ingresada
-  INC DI ; Nos posicionamos en el tercer byte del buffer
+  INC DI ; Nos posicionamos en el tercer byte del buffer_entrada
   MOV DX, DI
   MOV AH, 40
   INT 21
 ENDM
 
 ; S: Copiar A Variable
-; D: Se utiliza para copiar la informacion que contiene el buffer a una variable declarada en el segmento de datos
+; D: Se utiliza para copiar la informacion que contiene el buffer_entrada a una variable declarada en el segmento de datos
 ; P1: str1 = Variable a recibir y almacenar los datos
-; P2: buffer = Buffer de entrada
-mCopiarAVar MACRO str1, buffer
+mCopiarBufferAVar MACRO str1
   LOCAL L_COPIAR
 
   MOV SI, offset str1 ; Se almacena la posicion en memoria de la variable
-  MOV DI, offset buffer ; Se almacena la posicion en memoria del buffer
-  INC DI  ; Se posiciona en el segundo byte para determinar el tamanio del buffer
-  MOV CX, [DI]  ; Se almacena en CX el tamanio de la cadena de enterada del buffer para realizar el LOOP
-  INC DI  ; Se posiciona en el contenido del buffer
+  MOV DI, offset buffer_entrada ; Se almacena la posicion en memoria del buffer_entrada
+  INC DI  ; Se posiciona en el segundo byte para determinar el tamanio del buffer_entrada
+  MOV CH, 00
+  MOV CL, [DI]  ; Se almacena en CX el tamanio de la cadena de enterada del buffer_entrada para realizar el LOOP
+  INC DI  ; Se posiciona en el contenido del buffer_entrada
 
   L_COPIAR:
-    MOV AL, [DI] ; Se obtiene el caracter del buffer
-    MOV [SI], AL ; Se almacena el caracter en la posicion en memoria
+    MOV AL, [DI] ; Se obtiene el caracter del buffer_entrada
+    MOV [SI], AL ; Se almacena el caracter en la posicion en memoria ERROR
     INC SI ; Se incrementa en 1
     INC DI ; Se incrementa en 1
     LOOP L_COPIAR ; Le resta 1 a CX y verifica que CX no sea 0, si no es 0 va a la etiqueta y si es 0 sigue de largo
@@ -124,12 +122,56 @@ mCompCads MACRO str1, str2, sz
       ; El registro de indicadores (FLAGS) contiene el resultado de la comparación
 ENDM
 
+; S: Guardar Archivo Producto
+; D: Se encarga de almacenar la estructura completa de un producto
+mGuardarArchProd MACRO
+  LOCAL ESCRIBIR
+
+  ; Abriendo el archivo (para lectura/escritura) segun el nombre
+  MOV AL, 02
+  MOV AH, 3DH
+  MOV DX, offset arch_productos
+  INT 21
+
+  JNC ESCRIBIR
+
+  ; Creando archivo
+  MOV CX, 0000
+  MOV DX, offset arch_productos
+  MOV AH, 3CH
+  INT 21
+
+  ESCRIBIR:
+    ; Almacenando la direccion de memoria del archivo abierto
+    MOV [handle_productos], AX
+
+    ; Se posiciona el offset al final del archivo para almacenar mas informacion
+    MOV CX, 00
+    MOV DX, 00
+    MOV BX, [handle_productos]
+    MOV AL, 02
+    MOV AH, 42
+    INT 21
+
+    ; Escribir el producto
+    MOV BX, [handle_productos]
+    MOV CX, 28 ; Se indica que la cantidad de bytes a escribir seran 40 (28H)
+    MOV DX, offset prod_cod
+    MOV AH, 40
+    INT 21
+
+    ; Cerrar archivo
+    MOV BX, [handle_productos]
+    MOV AH, 3E
+    INT 21
+ENDM
+
 ; ********
 ; INICIO
 ; ********
 .MODEL SMALL
-.STACK
 .RADIX 16
+.STACK
 .DATA
 
   ; Mensaje Inicial
@@ -176,19 +218,22 @@ ENDM
 
   ; Estructura del producto
   prod_cod db 04 dup(0)
-  prod_nombre db 32 dup(0)
+  prod_nombre db 20 dup(0)
   prod_precio db 02 dup(0)
   prod_unidad db 02 dup(0)
 
+  ; Archivos
+  arch_credenciales db "PRA2.CNF",0
+  handle_credenciales dw 0000
+  arch_productos db "PROD.BIN",0
+  handle_productos dw 0000
+
 .CODE
+.STARTUP
+
     ; Inicio del programa
     MAIN PROC
 
-      ; Inicializamos los registros
-      MOV AX, @DATA
-      MOV DS, AX
-
-      ;INI - Se imprime el mensaje inicial
       ; mLimpiarC
       mImprimirVar msg_l1
       mImprimirVar msg_l2
@@ -197,7 +242,6 @@ ENDM
       mImprimirVar salto_linea
       mImprimirVar msg_l5
       mImprimirVar msg_l6
-      ;FIN - Se imprime el mensaje inicial
 
       ; ENTER
       MOV AH,0AH
@@ -218,7 +262,7 @@ ENDM
       mImprimirVar menu_pri_l5
 
       ; Se espera la opcion elegida
-      mComandoT 1, comando
+      mComandoT 1
 
       mCompCads comando, opcion_pri_1, 1
       JE PRODUCTOS
@@ -242,7 +286,7 @@ ENDM
       mImprimirVar menu_pro_l3
       mImprimirVar menu_pro_l4
       mImprimirVar menu_pro_l5
-      mComandoT 1, comando
+      mComandoT 1
 
       mCompCads comando, opcion_pro_1, 1
       JE CREAR_PRODUCTO
@@ -265,29 +309,32 @@ ENDM
 
       ; Pedir codigo
       mImprimirVar msg_crear_pro_l3
-      mEntradaT buffer_entrada, 05
-      mCopiarAVar prod_cod, buffer_entrada
+      mEntradaT 05
+      mCopiarBufferAVar prod_cod
       mImprimirVar salto_linea
 
       ; Pedir nombre
       mImprimirVar msg_crear_pro_l4
-      mEntradaT buffer_entrada, 21
-      mCopiarAVar prod_nombre, buffer_entrada
+      mEntradaT 21
+      mCopiarBufferAVar prod_nombre
       mImprimirVar salto_linea
 
       ; Pedir precio
       mImprimirVar msg_crear_pro_l5
-      mEntradaT buffer_entrada, 03
-      mCopiarAVar prod_precio, buffer_entrada
+      mEntradaT 03
+      mCopiarBufferAVar prod_precio
       mImprimirVar salto_linea
 
       ; Pedir unidad
       mImprimirVar msg_crear_pro_l6
-      mEntradaT buffer_entrada, 03
-      mCopiarAVar prod_unidad, buffer_entrada
+      mEntradaT 03
+      mCopiarBufferAVar prod_unidad
       mImprimirVar salto_linea
 
       mImprimirVar msg_crear_pro_l7
+
+      ; Guardando la informacion obtenida
+      mGuardarArchProd
 
     CREAR_PRODUCTO ENDP
 
@@ -310,5 +357,4 @@ ENDM
     SALIR PROC
       .EXIT
     SALIR ENDP
-
-    END MAIN
+END
