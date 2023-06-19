@@ -120,7 +120,7 @@ mCopiarBufferAVar MACRO str1
 ENDM
 
 ; S: Comparar Cadenas
-; D: Se encarga de comparar 2 cadenas de un tamanio definido
+; D: Se encarga de comparar 2 cadenas de un tamanio definido, si las dos cadenas son iguales hay que utilizar el JE
 ; P1: str1 = Cadena 1
 ; P2: str2 = Cadena 2
 ; P3: sz = Tamanio a comparar de cada cadena
@@ -212,6 +212,16 @@ ENDM
   msg_l6 db "Carne: 201807032", 0AH, 0DH, "$"
   salto_linea db 0AH, 0DH, "$"
 
+  ; Inicio sesion
+  error_ini_ses_1 db 0AH, 0DH, "Acceso denegado", 0AH, 0DH, "$"
+  error_ini_ses_2 db 0AH, 0DH, "Las credenciales son incorrectas", 0AH, 0DH, "$"
+  msg_ini_ses_1 db 0AH, 0DH, "Acceso exitoso", 0AH, 0DH, "$"
+  usuario db 'usuario = "dcatalan"'
+  clave db 'clave = "201807032"'
+  usu_encabezado db 0FH dup (0) ; Tamanio 15 (0FH)
+  usu_usuario db 15 dup(0)  ; Tamanio 21 (15H)
+  usu_clave db 14 dup(0)  ; Tamanio 20 (14H)
+
   ; Menu Principal
   menu_pri_l1 db "*********************", 0AH, 0DH, "$"
   menu_pri_l2 db "(P)roductos", 0AH, 0DH, "$"
@@ -235,23 +245,21 @@ ENDM
   ; Crear producto
   msg_crear_pro_l1 db "**********************", 0AH, 0DH, "$"
   msg_crear_pro_l2 db "CREANDO PRODUCTO NUEVO", 0AH, 0DH, "$"
-  msg_crear_pro_l3 db "Codigo: ", "$"
-  msg_crear_pro_l4 db "Nombre: ", "$"
-  msg_crear_pro_l5 db "Precio: ", "$"
-  msg_crear_pro_l6 db "Unidad: ", "$"
-  msg_crear_pro_l7 db "**********************", 0AH, 0DH, "$"
+  msg_crear_pro_l3 db "**********************", 0AH, 0DH, "$"
+  msg_crear_pro_l4 db "Codigo: ", "$"
+  msg_crear_pro_l5 db "Nombre: ", "$"
+  msg_crear_pro_l6 db "Precio: ", "$"
+  msg_crear_pro_l7 db "Unidad: ", "$"
 
   ; Mostrar producto
   error_mostrar_pro_1 db 0AH, 0DH, "No hay productos por mostrar", 0AH, 0DH, "$"
   msg_mostrar_pro_l1 db "Codigo: ", "$"
   msg_mostrar_pro_l2 db "Nombre: ", "$"
-  msg_mostrar_pro_l3 db "Precio: ", "$"
-  msg_mostrar_pro_l4 db "Unidad: ", "$"
 
   ; Util
   buffer_entrada db 20, 00, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
   comando db 13 dup(?)
-  msg_util_1 db 0AH, 0DH, "Presione ENTER para continuar...", 0AH, 0DH, "$"
+  msg_util_1 db 0AH, 0DH, " Presione ENTER para continuar...", 0AH, 0DH, "$"
 
   ; Estructura del producto
   prod_cod db 04 dup(0)
@@ -280,13 +288,56 @@ ENDM
       mImprimirVar msg_l5
       mImprimirVar msg_l6
 
-      mPausaE
-
-      JMP MENU
+      JMP INICIO_SESION
 
     MAIN ENDP
 
-    MENU PROC
+    INICIO_SESION PROC
+
+      ; Abriendo el archivo (lectura)
+      MOV AL, 00
+      MOV AH, 3DH
+      MOV DX, offset arch_credenciales
+      INT 21
+      JC @@error_archivo
+
+      ; Almacenando la direccion de memoria del archivo abierto
+      MOV [handle_credenciales], AX
+
+      ; Leyendo una estructura de producto
+      MOV BX, [handle_credenciales]
+      MOV CX, 38H
+      MOV DX, offset usu_encabezado
+      MOV AH, 3FH
+      INT 21
+
+      ; Se verifica que el usuario sea correcto
+      mCompCads usu_usuario, usuario, 14H
+      JE @@contrasenia
+      JMP @@error_credenciales
+
+      ; Se verifica que la contrasenia sea correcta
+      @@contrasenia:
+        mCompCads usu_clave, clave, 13H
+        JE @@correcto
+        JMP @@error_credenciales
+
+      @@error_archivo:
+        mImprimirVar error_ini_ses_1
+        JMP SALIR
+
+      @@error_credenciales:
+        mImprimirVar error_ini_ses_2
+        JMP SALIR
+
+      @@correcto:
+        mImprimirVar msg_ini_ses_1
+        mPausaE
+        JMP MENU_PRINCIPAL
+
+    INICIO_SESION ENDP
+
+    MENU_PRINCIPAL PROC
 
       ; Se imprime el menu principal
       mLimpiarC
@@ -308,9 +359,9 @@ ENDM
       mCompCads comando, opcion_pri_3, 1
       JE HERRAMIENTAS
 
-      JMP MENU
+      JMP MENU_PRINCIPAL
 
-    MENU ENDP
+    MENU_PRINCIPAL ENDP
 
     MENU_PRODUCTO PROC
 
@@ -341,32 +392,31 @@ ENDM
       mLimpiarC
       mImprimirVar msg_crear_pro_l1
       mImprimirVar msg_crear_pro_l2
+      mImprimirVar msg_crear_pro_l3
 
       ; Pedir codigo
-      mImprimirVar msg_crear_pro_l3
+      mImprimirVar msg_crear_pro_l4
       mEntradaT 05
       mCopiarBufferAVar prod_cod
       mImprimirVar salto_linea
 
       ; Pedir nombre
-      mImprimirVar msg_crear_pro_l4
+      mImprimirVar msg_crear_pro_l5
       mEntradaT 21
       mCopiarBufferAVar prod_nombre
       mImprimirVar salto_linea
 
       ; Pedir precio
-      mImprimirVar msg_crear_pro_l5
+      mImprimirVar msg_crear_pro_l6
       mEntradaT 03
       mCopiarBufferAVar prod_precio
       mImprimirVar salto_linea
 
       ; Pedir unidad
-      mImprimirVar msg_crear_pro_l6
+      mImprimirVar msg_crear_pro_l7
       mEntradaT 03
       mCopiarBufferAVar prod_unidad
       mImprimirVar salto_linea
-
-      mImprimirVar msg_crear_pro_l7
 
       ; Guardando la informacion obtenida
       mGuardarArchProd
@@ -418,10 +468,6 @@ ENDM
         mImprimirCadena prod_cod, 04
         mImprimirVar msg_mostrar_pro_l2
         mImprimirCadena prod_nombre, 20
-        mImprimirVar msg_mostrar_pro_l3
-        mImprimirCadena prod_precio, 02
-        mImprimirVar msg_mostrar_pro_l4
-        mImprimirCadena prod_unidad, 02
 
         POP CX ; Se obtiene la cantidad de veces a mostrar un producto
         SUB CX, 1 ; Se reduce a uno
