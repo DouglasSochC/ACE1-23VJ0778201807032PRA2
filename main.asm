@@ -100,15 +100,22 @@ ENDM
 
 ; S: Copiar A Variable
 ; D: Se utiliza para copiar la informacion que contiene el buffer_entrada a una variable declarada en el segmento de datos
+; en el caso que en el buffer de entrada no se halla ingresado algun caracter, entonces no se realizara el copiado de datos
+; y ademas se seteara 01H la variable 'bool_aux' debido a que a ocurrido un error
 ; P1: str1 = Variable a recibir y almacenar los datos
 mCopiarBufferAVar MACRO str1
-  LOCAL L_COPIAR
+  LOCAL L_COPIAR, L_ERROR, L_SALIR
 
   MOV SI, offset str1 ; Se almacena la posicion en memoria de la variable
   MOV DI, offset buffer_entrada ; Se almacena la posicion en memoria del buffer_entrada
   INC DI  ; Se posiciona en el segundo byte para determinar el tamanio del buffer_entrada
   MOV CH, 00
   MOV CL, [DI]  ; Se almacena en CX el tamanio de la cadena de enterada del buffer_entrada para realizar el LOOP
+
+  ; Se verifica si la cantidad de caracteres ingresados en el buffer es 0
+  CMP CL, 00H
+  JE L_ERROR
+
   INC DI  ; Se posiciona en el contenido del buffer_entrada
 
   L_COPIAR:
@@ -116,7 +123,13 @@ mCopiarBufferAVar MACRO str1
     MOV [SI], AL ; Se almacena el caracter en la posicion en memoria ERROR
     INC SI ; Se incrementa en 1
     INC DI ; Se incrementa en 1
-    LOOP L_COPIAR ; Le resta 1 a CX y verifica que CX no sea 0, si no es 0 va a la etiqueta y si es 0 sigue de largo
+  LOOP L_COPIAR ; Le resta 1 a CX y verifica que CX no sea 0, si no es 0 va a la etiqueta y si es 0 sigue de largo
+  JMP L_SALIR
+
+  L_ERROR:
+    MOV bool_aux, 01
+
+  L_SALIR:
 ENDM
 
 ; S: Comparar Cadenas
@@ -566,7 +579,8 @@ ENDM
       mImprimirVar msg_crear_pro_l4
       mEntradaT 05
       mCopiarBufferAVar prod_cod
-
+      CMP bool_aux, 01
+      JE @@error
       mValidarCodigo prod_cod
       CMP bool_aux, 01
       JE @@error
@@ -576,7 +590,8 @@ ENDM
       mImprimirVar msg_crear_pro_l5
       mEntradaT 21
       mCopiarBufferAVar prod_descripcion
-
+      CMP bool_aux, 01
+      JE @@error
       mValidarDescripcion prod_descripcion
       CMP bool_aux, 01
       JE @@error
@@ -586,7 +601,8 @@ ENDM
       mImprimirVar msg_crear_pro_l6
       mEntradaT 03
       mCopiarBufferAVar prod_precio
-
+      CMP bool_aux, 01
+      JE @@error
       mValidarNumero prod_precio
       CMP bool_aux, 01
       JE @@error
@@ -596,7 +612,8 @@ ENDM
       mImprimirVar msg_crear_pro_l7
       mEntradaT 03
       mCopiarBufferAVar prod_unidad
-
+      CMP bool_aux, 01
+      JE @@error
       mValidarNumero prod_unidad
       CMP bool_aux, 01
       JE @@error
