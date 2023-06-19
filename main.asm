@@ -3,10 +3,11 @@
 ; *********************
 
 ; S: Pausa
-; D: Para la ejecucion del programa hasta que el usuario presione cualquier boton del teclado para seguir
+; D: Pausa la ejecucion del programa hasta que el usuario presione ENTER
 mPausaE MACRO
-  MOV AH,7
-  INT 21
+  mImprimirVar msg_util_1
+  MOV AH, 0AH
+  INT 21H
 ENDM
 
 ; S: Limpiar Consola
@@ -67,6 +68,34 @@ mImprimirBuffer MACRO
   MOV DX, DI
   MOV AH, 40
   INT 21
+ENDM
+
+; S: Imprimir Cadena
+; D: Se utiliza para imprimir en pantalla el contenido que tiene el parametro solicitado
+; esto es debido a que la cadena no contiene $ para indicar la finalizacion del mismo
+; P1: str1 = Cadena a imprimir
+; P2: sz = Tamanio de la cadena a imprimir
+mImprimirCadena MACRO str1, sz
+  LOCAL L_CARACTER
+
+  MOV DI, offset str1
+  MOV CX, sz
+
+  L_CARACTER:
+    MOV DL, [DI]
+    MOV AH, 02H
+    INT 21H
+    INC DI
+    LOOP L_CARACTER
+
+  MOV DL, 0AH
+  MOV AH, 02H
+  INT 21H
+
+  MOV DL, 0DH
+  MOV AH, 02H
+  INT 21H
+
 ENDM
 
 ; S: Copiar A Variable
@@ -162,7 +191,7 @@ mGuardarArchProd MACRO
 
     ; Cerrar archivo
     MOV BX, [handle_productos]
-    MOV AH, 3E
+    MOV AH, 3EH
     INT 21
 ENDM
 
@@ -212,9 +241,17 @@ ENDM
   msg_crear_pro_l6 db "Unidad: ", "$"
   msg_crear_pro_l7 db "**********************", 0AH, 0DH, "$"
 
+  ; Mostrar producto
+  error_mostrar_pro_1 db 0AH, 0DH, "No hay productos por mostrar", 0AH, 0DH, "$"
+  msg_mostrar_pro_l1 db "Codigo: ", "$"
+  msg_mostrar_pro_l2 db "Nombre: ", "$"
+  msg_mostrar_pro_l3 db "Precio: ", "$"
+  msg_mostrar_pro_l4 db "Unidad: ", "$"
+
   ; Util
   buffer_entrada db 20, 00, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
   comando db 13 dup(?)
+  msg_util_1 db 0AH, 0DH, "Presione ENTER para continuar...", 0AH, 0DH, "$"
 
   ; Estructura del producto
   prod_cod db 04 dup(0)
@@ -243,9 +280,7 @@ ENDM
       mImprimirVar msg_l5
       mImprimirVar msg_l6
 
-      ; ENTER
-      MOV AH,0AH
-      INT 21H
+      mPausaE
 
       JMP MENU
 
@@ -265,7 +300,7 @@ ENDM
       mComandoT 1
 
       mCompCads comando, opcion_pri_1, 1
-      JE PRODUCTOS
+      JE MENU_PRODUCTO
 
       mCompCads comando, opcion_pri_2, 1
       JE VENTAS
@@ -277,7 +312,7 @@ ENDM
 
     MENU ENDP
 
-    PRODUCTOS PROC
+    MENU_PRODUCTO PROC
 
       ; Menu del producto
       mLimpiarC
@@ -297,9 +332,9 @@ ENDM
       mCompCads comando, opcion_pro_3, 1
       JE MOSTRAR_PRODUCTO
 
-      JMP PRODUCTOS
+      JMP MENU_PRODUCTO
 
-    PRODUCTOS ENDP
+    MENU_PRODUCTO ENDP
 
     CREAR_PRODUCTO PROC
 
@@ -336,6 +371,8 @@ ENDM
       ; Guardando la informacion obtenida
       mGuardarArchProd
 
+      JMP MENU_PRODUCTO
+
     CREAR_PRODUCTO ENDP
 
     ELIMINAR_PRODUCTO PROC
@@ -343,6 +380,88 @@ ENDM
     ELIMINAR_PRODUCTO ENDP
 
     MOSTRAR_PRODUCTO PROC
+
+      mLimpiarC
+
+      ; Abriendo el archivo (lectura)
+      MOV AL, 00
+      MOV AH, 3DH
+      MOV DX, offset arch_productos
+      INT 21
+
+      JC @@error
+
+      ; Almacenando la direccion de memoria del archivo abierto
+      MOV [handle_productos], AX
+
+      ; Se mostraran 5 estructuras de producto
+      @@contador:
+        MOV CX, 05
+
+      @@mostrar:
+
+        PUSH CX ; Se salva la cantidad de veces a mostrar un producto
+
+        ; Leyendo una estructura de producto
+        MOV BX, [handle_productos]
+        MOV CX, 28
+        MOV DX, offset prod_cod
+        MOV AH, 3FH
+        INT 21
+
+        ; Si la estructura leida es 0 entonces se llego a la parte final del texto
+        CMP AX, 0
+        JZ @@parte_final
+
+        ; Imprimiendo la estructura
+        mImprimirVar msg_mostrar_pro_l1
+        mImprimirCadena prod_cod, 04
+        mImprimirVar msg_mostrar_pro_l2
+        mImprimirCadena prod_nombre, 20
+        mImprimirVar msg_mostrar_pro_l3
+        mImprimirCadena prod_precio, 02
+        mImprimirVar msg_mostrar_pro_l4
+        mImprimirCadena prod_unidad, 02
+
+        POP CX ; Se obtiene la cantidad de veces a mostrar un producto
+        SUB CX, 1 ; Se reduce a uno
+
+        JNZ @@mostrar
+
+      @@leer_continuacion:
+
+        ; Se lee el caracter para seguir leyendo o retornar al menu principal
+        MOV AH, 08H
+        INT 21H
+
+        ; En el caso que sea ENTER
+        CMP AL, 0DH
+        JE @@contador
+
+        ; En el caso que sea q
+        CMP AL, 71H
+        JE MENU_PRODUCTO
+
+        ; En el caso que no sea alguna de las anteriores
+        JMP @@leer_continuacion
+
+      @@parte_final:
+        POP CX
+        JMP @@leer_continuacion
+
+      ; Cerrar archivo
+      MOV BX, [handle_productos]
+      MOV AH, 3EH
+      INT 21
+
+      JMP @@correcto
+
+      @@error:
+        mImprimirVar error_mostrar_pro_1
+        mPausaE
+
+      @@correcto:
+        JMP MENU_PRODUCTO
 
     MOSTRAR_PRODUCTO ENDP
 
