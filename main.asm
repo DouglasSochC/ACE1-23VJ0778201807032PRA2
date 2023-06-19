@@ -432,14 +432,28 @@ ENDM
 
   ; Mostrar producto
   error_mostrar_pro_1 db 0AH, 0DH, "No hay productos por mostrar", 0AH, 0DH, "$"
-  msg_mostrar_pro_l1 db "Codigo: ", "$"
-  msg_mostrar_pro_l2 db "Nombre: ", "$"
+  msg_mostrar_pro_l1 db "********************", 0AH, 0DH, "$"
+  msg_mostrar_pro_l2 db "PRODUCTOS INGRESADOS", 0AH, 0DH, "$"
+  msg_mostrar_pro_l3 db "********************", 0AH, 0DH, "$"
+  msg_mostrar_pro_l4 db "Codigo: ", "$"
+  msg_mostrar_pro_l5 db "Nombre: ", "$"
+
+  ; Eliminar producto
+  msg_eliminar_pro_l1 db "*******************", 0AH, 0DH, "$"
+  msg_eliminar_pro_l2 db "PRODUCTO A ELIMINAR", 0AH, 0DH, "$"
+  msg_eliminar_pro_l3 db "*******************", 0AH, 0DH, "$"
+  msg_eliminar_pro_l4 db "Ingrese el codigo del producto a eliminar: ", "$"
+  msg_eliminar_pro_l5 db "Por favor, confirme la eliminacion (y|n): ", 0AH, 0DH, "$"
+  msg_eliminar_pro_l6 db "Producto eliminado correctamente", 0AH, 0DH, "$"
+  error_eliminar_pro_1 db "No hay productos para eliminar", "$"
+  error_eliminar_pro_2 db "El codigo ingresado no existe", "$"
+  prod_cod_eliminar db 04 dup(0)
 
   ; Util
   buffer_entrada db 20, 00, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
   comando db 13 dup(?)
   msg_util_1 db 0AH, 0DH, " Presione ENTER para continuar...", 0AH, 0DH, "$"
-  msg_error_util_1 db 0AH, 0DH, "El formato ingresado es incorrecto", 0AH, 0DH, "$"
+  msg_error_formato db 0AH, 0DH, "El formato ingresado es incorrecto", 0AH, 0DH, "$"
   bool_aux db 0 ; Sirve como auxiliar para validar las entradas realizadas por el usuario
 
   ; Estructura del producto
@@ -622,7 +636,7 @@ ENDM
       JMP @@correcto
 
       @@error:
-        mImprimirVar msg_error_util_1
+        mImprimirVar msg_error_formato
         mSetearValorAVar prod_cod, 00H, 04H
         mSetearValorAVar prod_descripcion, 00H, 20H
         mSetearValorAVar prod_precio, 00H, 02H
@@ -646,6 +660,161 @@ ENDM
 
     ELIMINAR_PRODUCTO PROC
 
+      mLimpiarC
+      mImprimirVar msg_eliminar_pro_l1
+      mImprimirVar msg_eliminar_pro_l2
+      mImprimirVar msg_eliminar_pro_l3
+
+      ; Solicitar codigo
+      mImprimirVar msg_eliminar_pro_l4
+      mEntradaT 05
+      mCopiarBufferAVar prod_cod_eliminar
+      CMP bool_aux, 01
+      JE @@error_formato
+      mValidarCodigo prod_cod_eliminar
+      CMP bool_aux, 01
+      JE @@error_formato
+      mImprimirVar salto_linea
+
+      @@buscar_registro:
+
+        ; Abriendo el archivo (lectura/escritura)
+        MOV AL, 02
+        MOV AH, 3DH
+        MOV DX, offset arch_productos
+        INT 21
+
+        JC @@error_archivo
+
+        ; Almacenando la direccion de memoria del archivo abierto
+        MOV [handle_productos], AX
+
+        ; Cantidad de ciclos a realizar para estar en la posicion de eliminacion de una estructura
+        MOV CX, 00
+
+        @@leyendo_archivo:
+          ADD CX, 01H ; Se indica que ha pasado un ciclo para encontrar la estructura
+          PUSH CX ; Se almacena el CX por que posiblemente se utilice posteriormente
+
+          ; Leyendo una estructura de producto
+          MOV BX, [handle_productos]
+          MOV CX, 28
+          MOV DX, offset prod_cod
+          MOV AH, 3FH
+          INT 21
+
+          PUSH AX ; Se almacena la cantidad de caracteres leidos debido a que mCompCads utiliza AX
+          mCompCads prod_cod, prod_cod_eliminar, 04H
+          POP AX ; Recupero el valor de AX de nuevo
+          POP CX ; Recupero el valor de CX de nuevo
+          JE @@posicionamiento_puntero
+
+          ; Si la estructura leida es diferente de 0 entonces no se ha llegado a la parte final del archivo
+          CMP AX, 00
+        JNZ @@leyendo_archivo
+        JMP @@error_codigo_no_encontrado
+
+      @@posicionamiento_puntero:
+        PUSH CX ; Se almacena en el stack la cantidad de ciclos a realizar
+
+        ; Se posiciona el offset al inicio del archivo para recorrerlo
+        MOV CX, 00
+        MOV DX, 00
+        MOV BX, [handle_productos]
+        MOV AL, 00
+        MOV AH, 42
+        INT 21
+
+        POP CX ; Se recupera el valor de CX para la cantidad de ciclos a realizar
+        SUB CX, 01H ; Se le resta un ciclo para estar en la posicion exacta de eliminacion
+
+      @@recorrido:
+
+        PUSH CX ; Se guarda el CX en el stack debido a que se utilizara posteriormente
+
+        ; Leyendo una estructura de producto
+        MOV BX, [handle_productos]
+        MOV CX, 28
+        MOV DX, offset prod_cod
+        MOV AH, 3FH
+        INT 21
+
+        POP CX ; Se recupera el valor de CX
+      LOOP @@recorrido
+      JMP @@confirmar_eliminacion
+
+      @@error_formato:
+        mImprimirVar msg_error_formato
+        mSetearValorAVar prod_cod_eliminar, 00H, 04H
+        MOV bool_aux, 00
+        mPausaE
+        JMP ELIMINAR_PRODUCTO
+
+      @@error_archivo:
+        mImprimirVar error_eliminar_pro_1
+        mPausaE
+        JMP MENU_PRODUCTO
+
+      @@error_codigo_no_encontrado:
+        mImprimirVar error_eliminar_pro_2
+        mPausaE
+        JMP @@salir
+
+      @@confirmar_eliminacion:
+        mImprimirVar msg_eliminar_pro_l5
+
+        ; Se lee el caracter para seguir leyendo el archivo o retornar al menu principal
+        MOV AH, 08H
+        INT 21H
+
+        ; En el caso que sea 'y'
+        CMP AL, 79H
+        JE @@eliminar
+
+        ; En el caso que sea 'n'
+        CMP AL, 6EH
+        JE @@salir
+
+        ; En el caso que no sea alguna de las anteriores
+        JMP @@confirmar_eliminacion
+
+      @@eliminar:
+
+        ; Limpiando variables temporales
+        mSetearValorAVar prod_cod, 00H, 04H
+        mSetearValorAVar prod_descripcion, 00H, 20H
+        mSetearValorAVar prod_precio, 00H, 02H
+        mSetearValorAVar prod_unidad, 00H, 02H
+
+        ; Escribir el producto
+        MOV BX, [handle_productos]
+        MOV CX, 28 ; Se indica que la cantidad de bytes a escribir seran 40 (28H)
+        MOV DX, offset prod_cod
+        MOV AH, 40
+        INT 21
+
+        ; Respuesta de eliminacion
+        mImprimirVar msg_eliminar_pro_l6
+        mPausaE
+
+      @@salir:
+        ; Cerrar archivo
+        MOV BX, [handle_productos]
+        MOV AH, 3EH
+        INT 21
+
+        ; Limpiando variable de codigo a eliminar
+        mSetearValorAVar prod_cod_eliminar, 00H, 04H
+
+        ; Limpiando variables temporales
+        mSetearValorAVar prod_cod, 00H, 04H
+        mSetearValorAVar prod_descripcion, 00H, 20H
+        mSetearValorAVar prod_precio, 00H, 02H
+        mSetearValorAVar prod_unidad, 00H, 02H
+
+        ; Retornando al menu de producto
+        JMP MENU_PRODUCTO
+
     ELIMINAR_PRODUCTO ENDP
 
     MOSTRAR_PRODUCTO PROC
@@ -662,6 +831,10 @@ ENDM
 
       ; Almacenando la direccion de memoria del archivo abierto
       MOV [handle_productos], AX
+
+      mImprimirVar msg_mostrar_pro_l1
+      mImprimirVar msg_mostrar_pro_l2
+      mImprimirVar msg_mostrar_pro_l3
 
       ; Se mostraran 5 estructuras de producto
       @@contador:
@@ -683,9 +856,9 @@ ENDM
         JZ @@parte_final
 
         ; Imprimiendo la estructura
-        mImprimirVar msg_mostrar_pro_l1
+        mImprimirVar msg_mostrar_pro_l4
         mImprimirCadena prod_cod, 04H
-        mImprimirVar msg_mostrar_pro_l2
+        mImprimirVar msg_mostrar_pro_l5
         mImprimirCadena prod_descripcion, 20H
 
         POP CX ; Se obtiene la cantidad de veces a mostrar un producto
