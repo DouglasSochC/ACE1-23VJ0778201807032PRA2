@@ -195,6 +195,172 @@ mGuardarArchProd MACRO
     INT 21
 ENDM
 
+; S: Validar Codigo
+; D: Se encarga de validar que el parametro solicitado sigue la expresion regular [A-Z0-9]+ 4 (04H)
+; en el caso que halla un error la variable 'bool_aux' es 01H y en el caso que no halla, el valor de 'bool_aux' es 00H
+mValidarCodigo MACRO str1
+  LOCAL L_CARACTER, L_SIGUIENTE, L_LETRA, L_CORRECTO, L_ERROR, L_SALIDA
+
+  MOV DI, offset str1 ; Se almacena la posicion en memoria de la variable
+  MOV CX, 04H ; Se define el tamanio del str1
+
+  L_CARACTER:
+    MOV AL, [DI] ; Se obtiene el caracter del str1
+
+    CMP AL, 00H ; Compara AL con null
+    JE L_SIGUIENTE ; Salta a L_SIGUIENTE en el caso que no halla un valor a comparar
+
+    CMP AL, 30H ; Compara AL con el caracter '0'
+    JB L_ERROR ; Salta a L_ERROR si AL es menor que '0'
+
+    CMP AL, 39H ; Compara AL con el caracter '9'
+    JA L_LETRA ; Salta a L_LETRA si AL es mayor que '9' porque se verifica que este entre 'A' y 'Z'
+    JMP L_SIGUIENTE
+
+      L_LETRA:
+        CMP AL, 41H ; Compara AL con el caracter 'A'
+        JB L_ERROR ; Salta a L_ERROR si AL es menor que 'A'
+
+        CMP AL, 5AH ; Compara AL con el caracter 'Z'
+        JA L_ERROR ; Salta a L_ERROR si AL es mayor que 'Z'
+
+      L_SIGUIENTE:
+        INC DI ; Se incrementa en 1
+
+    LOOP L_CARACTER ; Le resta 1 a CX y verifica que CX no sea 0, si no es 0 va a la etiqueta y si es 0 sigue de largo
+  JMP L_CORRECTO
+
+  L_ERROR:
+    MOV bool_aux, 01
+    JMP L_SALIDA
+
+  L_CORRECTO:
+    MOV bool_aux, 00
+
+  L_SALIDA:
+ENDM
+
+; S: Validar Descripcion
+; D: Se encarga de validar que el parametro solicitado sigue la expresion regular [A-Za-z0-9,.!]+ con un tamanio de 32 (20H)
+; en el caso que halla un error la variable 'bool_aux' es 01H y en el caso que no halla, el valor de 'bool_aux' es 00H
+mValidarDescripcion MACRO str1
+  LOCAL L_CARACTER, L_SIGUIENTE, L_MAYUSCULA, L_MINUSCULA, L_ESPECIAL, L_CORRECTO, L_ERROR, L_SALIDA
+
+  MOV DI, offset str1 ; Se almacena la posicion en memoria de la variable
+  MOV CX, 20H ; Se define el tamanio del str1
+
+  L_CARACTER:
+    MOV AL, [DI] ; Se obtiene el caracter del str1
+
+    CMP AL, 00H ; Compara AL con null
+    JE L_SIGUIENTE ; Salta a L_SIGUIENTE en el caso que no halla un valor a comparar
+
+    CMP AL, 30H ; Compara AL con el caracter '0'
+    JB L_ESPECIAL ; Salta a L_ESPECIAL si AL es menor que '0'
+
+    CMP AL, 39H ; Compara AL con el caracter '9'
+    JA L_MAYUSCULA ; Salta a L_MAYUSCULA si AL es mayor que '9' porque se verifica que este entre 'A' y 'Z'
+    JMP L_SIGUIENTE
+
+      L_ESPECIAL:
+        CMP AL, 2CH
+        JE L_SIGUIENTE
+
+        CMP AL, 2EH
+        JE L_SIGUIENTE
+
+        CMP AL, 21H
+        JE L_SIGUIENTE
+
+        JMP L_ERROR
+
+      L_MAYUSCULA:
+        CMP AL, 41H ; Compara AL con el caracter 'A'
+        JB L_ERROR ; Salta a L_ERROR si AL es menor que 'A'
+
+        CMP AL, 5AH ; Compara AL con el caracter 'Z'
+        JA L_MINUSCULA ; Salta a L_MINUSCULA si AL es mayor que 'Z'
+        JMP L_SIGUIENTE
+
+      L_MINUSCULA:
+        CMP AL, 61H ; Compara AL con el caracter 'a'
+        JB L_ERROR ; Salta a L_ERROR si AL es menor que 'a'
+
+        CMP AL, 7AH ; Compara AL con el caracter 'z'
+        JA L_ERROR ; Salta a L_ERROR si AL es mayor que 'z'
+
+      L_SIGUIENTE:
+        INC DI ; Se incrementa en 1
+
+    LOOP L_CARACTER ; Le resta 1 a CX y verifica que CX no sea 0, si no es 0 va a la etiqueta y si es 0 sigue de largo
+  JMP L_CORRECTO
+
+  L_ERROR:
+    MOV bool_aux, 01
+    JMP L_SALIDA
+
+  L_CORRECTO:
+    MOV bool_aux, 00
+
+  L_SALIDA:
+ENDM
+
+; S: Validar Numero
+; D: Se encarga de validar que el parametro solicitado sigue la expresion regular [0-9]+ con un tamanio de 2 (02H)
+; en el caso que halla un error la variable 'bool_aux' es 01H y en el caso que no halla, el valor de 'bool_aux' es 00H
+mValidarNumero MACRO str1
+  LOCAL L_CARACTER, L_SIGUIENTE, L_CORRECTO, L_ERROR, L_SALIDA
+
+  MOV DI, offset str1 ; Se almacena la posicion en memoria de la variable
+  MOV CX, 02H ; Se define el tamanio del str1
+
+  L_CARACTER:
+    MOV AL, [DI] ; Se obtiene el caracter del str1
+
+    CMP AL, 00H ; Compara AL con null
+    JE L_SIGUIENTE ; Salta a L_SIGUIENTE en el caso que no halla un valor a comparar
+
+    CMP AL, 30H ; Compara AL con el caracter '0'
+    JB L_ERROR ; Salta a L_ERROR si AL es menor que '0'
+
+    CMP AL, 39H ; Compara AL con el caracter '9'
+    JA L_ERROR ; Salta a L_ERROR si AL es mayor que '9'
+
+    L_SIGUIENTE:
+      INC DI ; Se incrementa en 1
+
+    LOOP L_CARACTER ; Le resta 1 a CX y verifica que CX no sea 0, si no es 0 va a la etiqueta y si es 0 sigue de largo
+  JMP L_CORRECTO
+
+  L_ERROR:
+    MOV bool_aux, 01
+    JMP L_SALIDA
+
+  L_CORRECTO:
+    MOV bool_aux, 00
+
+  L_SALIDA:
+ENDM
+
+; S: Setear Valor A Variable
+; D: Se encarga de setear un valor (val) en todo el recorrido que se realiza (por sz) al str1
+; P1: str1 = Variable que se le setearan los valores
+; P2: val = Valor a setear a str1
+; P3: sz = Recorrido a realizar para setear a 'str1' el 'val'
+mSetearValorAVar MACRO str1, val, sz
+  LOCAL L_CARACTER
+
+  MOV DI, offset str1 ; Se almacena la posicion en memoria de la variable
+  MOV CX, sz ; Se define el tamanio del str1
+  MOV AL, val
+
+  L_CARACTER:
+    MOV [DI], AL ; Se setea el 'val'
+    INC DI ; Se incrementa en 1
+  LOOP L_CARACTER
+
+ENDM
+
 ; ********
 ; INICIO
 ; ********
@@ -260,10 +426,12 @@ ENDM
   buffer_entrada db 20, 00, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
   comando db 13 dup(?)
   msg_util_1 db 0AH, 0DH, " Presione ENTER para continuar...", 0AH, 0DH, "$"
+  msg_error_util_1 db 0AH, 0DH, "El formato ingresado es incorrecto", 0AH, 0DH, "$"
+  bool_aux db 0 ; Sirve como auxiliar para validar las entradas realizadas por el usuario
 
   ; Estructura del producto
   prod_cod db 04 dup(0)
-  prod_nombre db 20 dup(0)
+  prod_descripcion db 20 dup(0)
   prod_precio db 02 dup(0)
   prod_unidad db 02 dup(0)
 
@@ -398,30 +566,64 @@ ENDM
       mImprimirVar msg_crear_pro_l4
       mEntradaT 05
       mCopiarBufferAVar prod_cod
+
+      mValidarCodigo prod_cod
+      CMP bool_aux, 01
+      JE @@error
       mImprimirVar salto_linea
 
-      ; Pedir nombre
+      ; Pedir descripcion
       mImprimirVar msg_crear_pro_l5
       mEntradaT 21
-      mCopiarBufferAVar prod_nombre
+      mCopiarBufferAVar prod_descripcion
+
+      mValidarDescripcion prod_descripcion
+      CMP bool_aux, 01
+      JE @@error
       mImprimirVar salto_linea
 
       ; Pedir precio
       mImprimirVar msg_crear_pro_l6
       mEntradaT 03
       mCopiarBufferAVar prod_precio
+
+      mValidarNumero prod_precio
+      CMP bool_aux, 01
+      JE @@error
       mImprimirVar salto_linea
 
       ; Pedir unidad
       mImprimirVar msg_crear_pro_l7
       mEntradaT 03
       mCopiarBufferAVar prod_unidad
+
+      mValidarNumero prod_unidad
+      CMP bool_aux, 01
+      JE @@error
       mImprimirVar salto_linea
 
-      ; Guardando la informacion obtenida
-      mGuardarArchProd
+      JMP @@correcto
 
-      JMP MENU_PRODUCTO
+      @@error:
+        mImprimirVar msg_error_util_1
+        mSetearValorAVar prod_cod, 00H, 04H
+        mSetearValorAVar prod_descripcion, 00H, 20H
+        mSetearValorAVar prod_precio, 00H, 02H
+        mSetearValorAVar prod_unidad, 00H, 02H
+        MOV bool_aux, 00
+        mPausaE
+        JMP CREAR_PRODUCTO
+
+      @@correcto:
+        ; Guardando la informacion obtenida
+        mGuardarArchProd
+        ; Limpiando variables temporales
+        mSetearValorAVar prod_cod, 00H, 04H
+        mSetearValorAVar prod_descripcion, 00H, 20H
+        mSetearValorAVar prod_precio, 00H, 02H
+        mSetearValorAVar prod_unidad, 00H, 02H
+        ; Regresando al menu de producto
+        JMP MENU_PRODUCTO
 
     CREAR_PRODUCTO ENDP
 
@@ -439,7 +641,7 @@ ENDM
       MOV DX, offset arch_productos
       INT 21
 
-      JC @@error
+      JC @@error_archivo
 
       ; Almacenando la direccion de memoria del archivo abierto
       MOV [handle_productos], AX
@@ -465,18 +667,18 @@ ENDM
 
         ; Imprimiendo la estructura
         mImprimirVar msg_mostrar_pro_l1
-        mImprimirCadena prod_cod, 04
+        mImprimirCadena prod_cod, 04H
         mImprimirVar msg_mostrar_pro_l2
-        mImprimirCadena prod_nombre, 20
+        mImprimirCadena prod_descripcion, 20H
 
         POP CX ; Se obtiene la cantidad de veces a mostrar un producto
         SUB CX, 1 ; Se reduce a uno
 
-        JNZ @@mostrar
+      JNZ @@mostrar
 
       @@leer_continuacion:
 
-        ; Se lee el caracter para seguir leyendo o retornar al menu principal
+        ; Se lee el caracter para seguir leyendo el archivo o retornar al menu principal
         MOV AH, 08H
         INT 21H
 
@@ -484,9 +686,9 @@ ENDM
         CMP AL, 0DH
         JE @@contador
 
-        ; En el caso que sea q
+        ; En el caso que sea 'q'
         CMP AL, 71H
-        JE MENU_PRODUCTO
+        JE @@correcto
 
         ; En el caso que no sea alguna de las anteriores
         JMP @@leer_continuacion
@@ -495,18 +697,26 @@ ENDM
         POP CX
         JMP @@leer_continuacion
 
-      ; Cerrar archivo
-      MOV BX, [handle_productos]
-      MOV AH, 3EH
-      INT 21
-
       JMP @@correcto
 
-      @@error:
+      @@error_archivo:
         mImprimirVar error_mostrar_pro_1
         mPausaE
+        JMP @@salir
 
       @@correcto:
+        ; Cerrar archivo
+        MOV BX, [handle_productos]
+        MOV AH, 3EH
+        INT 21
+
+      @@salir:
+        ; Limpiando variables temporales
+        mSetearValorAVar prod_cod, 00H, 04H
+        mSetearValorAVar prod_descripcion, 00H, 20H
+        mSetearValorAVar prod_precio, 00H, 02H
+        mSetearValorAVar prod_unidad, 00H, 02H
+        ; Regresando al menu de producto
         JMP MENU_PRODUCTO
 
     MOSTRAR_PRODUCTO ENDP
