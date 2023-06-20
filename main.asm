@@ -167,33 +167,78 @@ ENDM
 ; S: Guardar Archivo Producto
 ; D: Se encarga de almacenar la estructura completa de un producto
 mGuardarArchProd MACRO
-  LOCAL ESCRIBIR
+  LOCAL L_INICIO, L_ESPACIO, L_POSICIONAMIENTO, L_RECORRER, L_ESCRIBIR
 
   ; Abriendo el archivo (para lectura/escritura) segun el nombre
   MOV AL, 02
   MOV AH, 3DH
   MOV DX, offset arch_productos
   INT 21
+  JNC L_INICIO ; Si ya existe el archivo se dirige a escribir los datos
 
-  JNC ESCRIBIR
-
-  ; Creando archivo
+  ; Creando archivo en el caso que no exista
   MOV CX, 0000
   MOV DX, offset arch_productos
   MOV AH, 3CH
   INT 21
 
-  ESCRIBIR:
-    ; Almacenando la direccion de memoria del archivo abierto
-    MOV [handle_productos], AX
+  ; Inicializando escritura
+  L_INICIO:
+    MOV [handle_productos], AX ; Almacenando la direccion de memoria del archivo abierto
+    MOV CX, 00 ; Registro que ayudara a almacenar la cantidad de ciclos a realizar para ubicarse en el espacio disponible
 
-    ; Se posiciona el offset al final del archivo para almacenar mas informacion
+  ; Se busca un espacio disponible para almacenar el nuevo producto
+  L_ESPACIO:
+
+    ADD CX, 01H ; Se agrega un recorrido
+    PUSH CX ; Se guarda el registro en el stack por posible uso posterior
+
+    ; Leyendo una estructura de producto
+    MOV BX, [handle_productos]
+    MOV CX, 28H
+    MOV DX, offset aux_prod_cod
+    MOV AH, 3FH
+    INT 21
+
+    PUSH AX ; Se almacena la cantidad de caracteres leidos debido a que mCompCads utiliza AX
+    mCompCads aux_prod_cod, aux_prod_vacio, 04H
+    POP AX ; Recupero el valor de AX de nuevo
+    POP CX ; Se recupera la informacion
+    JE L_POSICIONAMIENTO
+
+    ; Si la estructura leida es 0 entonces ya se ha llegado a la parte final del archivo
+    CMP AX, 0
+  JNZ L_ESPACIO
+
+  L_POSICIONAMIENTO:
+    PUSH CX ; Se guarda el registro en el stack por posible uso posterior
+
+    ; Se posiciona el offset al inicio del archivo
     MOV CX, 00
     MOV DX, 00
     MOV BX, [handle_productos]
-    MOV AL, 02
+    MOV AL, 00
     MOV AH, 42
     INT 21
+
+    POP CX ; Se recupera la informacion
+    SUB CX, 01 ; Se resta en una unidad para estar en la posicion adecuada
+
+  L_RECORRER:
+    PUSH CX
+
+    ; Leyendo una estructura de producto
+    MOV BX, [handle_productos]
+    MOV CX, 28
+    MOV DX, offset aux_prod_cod
+    MOV AH, 3FH
+    INT 21
+
+    POP CX
+  LOOP L_RECORRER
+  JMP L_ESCRIBIR
+
+  L_ESCRIBIR:
 
     ; Escribir el producto
     MOV BX, [handle_productos]
@@ -461,6 +506,13 @@ ENDM
   prod_descripcion db 20 dup(0)
   prod_precio db 02 dup(0)
   prod_unidad db 02 dup(0)
+
+  ; Estructura auxiliar de producto
+  aux_prod_cod db 04 dup(0)
+  aux_prod_descripcion db 20 dup(0)
+  aux_prod_precio db 02 dup(0)
+  aux_prod_unidad db 02 dup(0)
+  aux_prod_vacio db 04 dup(0)
 
   ; Archivos
   arch_credenciales db "PRA2.CNF",0
