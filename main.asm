@@ -424,9 +424,44 @@ mSetearValorAVar MACRO str1, val, sz
 ENDM
 
 ; S: Convertir Numero A Cadena
-; D: Se encarga de convertir un numero hexadecimal a su representacion en cadena
+; D: Se encarga de convertir un numero hexadecimal a su representacion en cadena, el str1 es la
+; variable que contendra la cadena
 ; P1: val1 = Variable que representa el numero
-mConvertNumeroACadena MACRO val1
+mConvertNumeroACadena MACRO val1, str1
+
+  LOCAL L_DIVISION, L_ALMACENAR
+
+  ; Inicializando los registros que se utilizaran para la conversion
+  MOV AX, val1
+  LEA SI, str1
+  MOV DX, 0000
+  MOV CX, 0000
+  MOV BX, 000AH ; 10 (0AH)
+
+  L_DIVISION:
+    CMP AX, 00H
+    JE L_ALMACENAR
+    ; Se realiza la division para obtener el residuo el cual se queda en DX
+    DIV BX
+    ; Se almacena el residuo para su posterior uso
+    PUSH DX
+    ; Se incrementa a uno para que posteriormente se pueda recorrer el stack y asi determinar la cadena
+    INC CX
+    ; Seteo DX a 0
+    XOR DX, DX
+  JMP L_DIVISION
+
+  L_ALMACENAR:
+    ; Se obtiene el ultimo valor del DX
+    POP DX
+    ; Se le suma un valor de 30H (48) para indicar la representacion del caracter
+    ADD DX, 30
+
+    MOV [SI], DL ; Se almacena el caracter en la posicion actual del 'str1'
+    INC SI ; Se incrementa en 1
+
+  LOOP L_ALMACENAR
+
 ENDM
 
 ; S: Convertir Cadena A Numero
@@ -444,7 +479,7 @@ mConvertCadenaANumero MACRO str1
 
   L_RECORRIDO:
     MOV BL, [DI] ; Se obtiene el caracter
-    
+
     ; Se verifica si el caracter es nulo
     CMP BL, 00
     JE L_SALIDA
@@ -595,7 +630,7 @@ ENDM
       ; Almacenando la direccion de memoria del archivo abierto
       MOV [handle_credenciales], AX
 
-      ; Leyendo una estructura de producto
+      ; Leyendo una estructura de las credenciales
       MOV BX, [handle_credenciales]
       MOV CX, 38H
       MOV DX, offset usu_encabezado
