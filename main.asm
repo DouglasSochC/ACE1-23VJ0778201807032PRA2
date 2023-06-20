@@ -224,6 +224,10 @@ mGuardarArchProd MACRO
     POP CX ; Se recupera la informacion
     SUB CX, 01 ; Se resta en una unidad para estar en la posicion adecuada
 
+  ; Si el CX es igual a 0 quiere decir que se desea almacenar en la estructura del primer registro ingresado
+  CMP CX, 00H
+  JZ L_ESCRIBIR
+
   L_RECORRER:
     PUSH CX
 
@@ -780,6 +784,10 @@ ENDM
         POP CX ; Se recupera el valor de CX para la cantidad de ciclos a realizar
         SUB CX, 01H ; Se le resta un ciclo para estar en la posicion exacta de eliminacion
 
+      ; Si el CX es igual a 0 quiere decir que se desea eliminar el primer registro ingresado
+      CMP CX, 00H
+      JZ @@confirmar_eliminacion
+
       @@recorrido:
 
         PUSH CX ; Se guarda el CX en el stack debido a que se utilizara posteriormente
@@ -907,6 +915,11 @@ ENDM
         CMP AX, 0
         JZ @@parte_final
 
+        PUSH AX
+        mCompCads prod_cod, aux_prod_vacio, 04H
+        POP AX
+        JZ @@siguiente
+
         ; Imprimiendo la estructura
         mImprimirVar msg_mostrar_pro_l4
         mImprimirCadena prod_cod, 04H
@@ -915,6 +928,11 @@ ENDM
 
         POP CX ; Se obtiene la cantidad de veces a mostrar un producto
         SUB CX, 1 ; Se reduce a uno
+        PUSH CX
+
+        @@siguiente:
+          POP CX
+          SUB CX, 00H
 
       JNZ @@mostrar
 
