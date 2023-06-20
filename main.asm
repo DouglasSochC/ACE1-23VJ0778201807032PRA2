@@ -368,13 +368,13 @@ mValidarDescripcion MACRO str1
 ENDM
 
 ; S: Validar Numero
-; D: Se encarga de validar que el parametro solicitado sigue la expresion regular [0-9]+ con un tamanio de 2 (02H)
+; D: Se encarga de validar que el parametro solicitado sigue la expresion regular [0-9]+ con un tamanio de 5 (05H)
 ; en el caso que halla un error la variable 'bool_aux' es 01H y en el caso que no halla, el valor de 'bool_aux' es 00H
 mValidarNumero MACRO str1
   LOCAL L_CARACTER, L_SIGUIENTE, L_CORRECTO, L_ERROR, L_SALIDA
 
   MOV DI, offset str1 ; Se almacena la posicion en memoria de la variable
-  MOV CX, 02H ; Se define el tamanio del str1
+  MOV CX, 05H ; Se define el tamanio del str1
 
   L_CARACTER:
     MOV AL, [DI] ; Se obtiene el caracter del str1
@@ -421,6 +421,44 @@ mSetearValorAVar MACRO str1, val, sz
     INC DI ; Se incrementa en 1
   LOOP L_CARACTER
 
+ENDM
+
+; S: Convertir Numero A Cadena
+; D: Se encarga de convertir un numero hexadecimal a su representacion en cadena
+; P1: val1 = Variable que representa el numero
+mConvertNumeroACadena MACRO val1
+ENDM
+
+; S: Convertir Cadena A Numero
+; D: Se encarga de convertir una cadena en su representacion hexadecimal, el registro que contiene
+; el resultado sera el AX
+; P1: val1 = Variable que representa la cadena
+mConvertCadenaANumero MACRO str1
+
+  LOCAL L_RECORRIDO, L_SALIDA
+
+  MOV AX, 0000 ; Inicializando la salida
+  MOV CX, 0005 ; Cantidad de caracteres
+
+  MOV DI, offset str1
+
+  L_RECORRIDO:
+    MOV BL, [DI] ; Se obtiene el caracter
+    
+    ; Se verifica si el caracter es nulo
+    CMP BL, 00
+    JE L_SALIDA
+
+    SUB BL, 30H
+    MOV DX, 000AH ; Se multiplicara el valor obtenido * 10
+    MUL DX  ; Significa AX * DX
+
+    MOV BH, 00H
+    ADD AX, BX
+    INC DI
+  LOOP L_RECORRIDO
+
+  L_SALIDA:
 ENDM
 
 ; ********
@@ -508,14 +546,16 @@ ENDM
   ; Estructura del producto
   prod_cod db 04 dup(0)
   prod_descripcion db 20 dup(0)
-  prod_precio db 02 dup(0)
-  prod_unidad db 02 dup(0)
+  prod_precio db 05 dup(0)
+  prod_unidad db 05 dup(0)
+  num_precio dw 0000
+  num_unidad dw 0000
 
   ; Estructura auxiliar de producto
   aux_prod_cod db 04 dup(0)
   aux_prod_descripcion db 20 dup(0)
-  aux_prod_precio db 02 dup(0)
-  aux_prod_unidad db 02 dup(0)
+  aux_prod_precio db 05 dup(0)
+  aux_prod_unidad db 05 dup(0)
   aux_prod_vacio db 04 dup(0)
 
   ; Archivos
@@ -669,7 +709,7 @@ ENDM
 
       ; Pedir precio
       mImprimirVar msg_crear_pro_l6
-      mEntradaT 03
+      mEntradaT 06
       mCopiarBufferAVar prod_precio
       CMP bool_aux, 01
       JE @@error
@@ -680,7 +720,7 @@ ENDM
 
       ; Pedir unidad
       mImprimirVar msg_crear_pro_l7
-      mEntradaT 03
+      mEntradaT 06
       mCopiarBufferAVar prod_unidad
       CMP bool_aux, 01
       JE @@error
@@ -695,8 +735,8 @@ ENDM
         mImprimirVar msg_error_formato
         mSetearValorAVar prod_cod, 00H, 04H
         mSetearValorAVar prod_descripcion, 00H, 20H
-        mSetearValorAVar prod_precio, 00H, 02H
-        mSetearValorAVar prod_unidad, 00H, 02H
+        mSetearValorAVar prod_precio, 00H, 05H
+        mSetearValorAVar prod_unidad, 00H, 05H
         MOV bool_aux, 00
         mPausaE
         JMP CREAR_PRODUCTO
@@ -707,8 +747,8 @@ ENDM
         ; Limpiando variables temporales
         mSetearValorAVar prod_cod, 00H, 04H
         mSetearValorAVar prod_descripcion, 00H, 20H
-        mSetearValorAVar prod_precio, 00H, 02H
-        mSetearValorAVar prod_unidad, 00H, 02H
+        mSetearValorAVar prod_precio, 00H, 05H
+        mSetearValorAVar prod_unidad, 00H, 05H
         ; Regresando al menu de producto
         JMP MENU_PRODUCTO
 
@@ -843,8 +883,8 @@ ENDM
         ; Limpiando variables temporales
         mSetearValorAVar prod_cod, 00H, 04H
         mSetearValorAVar prod_descripcion, 00H, 20H
-        mSetearValorAVar prod_precio, 00H, 02H
-        mSetearValorAVar prod_unidad, 00H, 02H
+        mSetearValorAVar prod_precio, 00H, 05H
+        mSetearValorAVar prod_unidad, 00H, 05H
 
         ; Escribir el producto
         MOV BX, [handle_productos]
@@ -869,8 +909,8 @@ ENDM
         ; Limpiando variables temporales
         mSetearValorAVar prod_cod, 00H, 04H
         mSetearValorAVar prod_descripcion, 00H, 20H
-        mSetearValorAVar prod_precio, 00H, 02H
-        mSetearValorAVar prod_unidad, 00H, 02H
+        mSetearValorAVar prod_precio, 00H, 05H
+        mSetearValorAVar prod_unidad, 00H, 05H
 
         ; Retornando al menu de producto
         JMP MENU_PRODUCTO
@@ -974,8 +1014,8 @@ ENDM
         ; Limpiando variables temporales
         mSetearValorAVar prod_cod, 00H, 04H
         mSetearValorAVar prod_descripcion, 00H, 20H
-        mSetearValorAVar prod_precio, 00H, 02H
-        mSetearValorAVar prod_unidad, 00H, 02H
+        mSetearValorAVar prod_precio, 00H, 05H
+        mSetearValorAVar prod_unidad, 00H, 05H
         ; Regresando al menu de producto
         JMP MENU_PRODUCTO
 
