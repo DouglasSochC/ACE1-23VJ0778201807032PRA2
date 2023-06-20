@@ -427,6 +427,7 @@ ENDM
 ; D: Se encarga de convertir un numero hexadecimal a su representacion en cadena, el str1 es la
 ; variable que contendra la cadena
 ; P1: val1 = Variable que representa el numero
+; P2: str1 = Variable en donde se almacenara la cadena
 mConvertNumeroACadena MACRO val1, str1
 
   LOCAL L_DIVISION, L_ALMACENAR
@@ -581,17 +582,17 @@ ENDM
   ; Estructura del producto
   prod_cod db 04 dup(0)
   prod_descripcion db 20 dup(0)
-  prod_precio db 05 dup(0)
-  prod_unidad db 05 dup(0)
   num_precio dw 0000
   num_unidad dw 0000
+  prod_precio db 05 dup(0)
+  prod_unidad db 05 dup(0)
 
   ; Estructura auxiliar de producto
   aux_prod_cod db 04 dup(0)
   aux_prod_descripcion db 20 dup(0)
-  aux_prod_precio db 05 dup(0)
-  aux_prod_unidad db 05 dup(0)
-  aux_prod_vacio db 04 dup(0)
+  aux_prod_precio dw 0000
+  aux_prod_unidad dw 0000
+  aux_prod_vacio db 04 dup(0) ; Se utiliza para auxiliar al momento de verificar un espacio disponible en el archivo de productos
 
   ; Archivos
   arch_credenciales db "PRA2.CNF",0
@@ -751,6 +752,8 @@ ENDM
       mValidarNumero prod_precio
       CMP bool_aux, 01
       JE @@error
+      mConvertCadenaANumero prod_precio
+      MOV num_precio, AX
       mImprimirVar salto_linea
 
       ; Pedir unidad
@@ -762,6 +765,8 @@ ENDM
       mValidarNumero prod_unidad
       CMP bool_aux, 01
       JE @@error
+      mConvertCadenaANumero prod_unidad
+      MOV num_unidad, AX
       mImprimirVar salto_linea
 
       JMP @@correcto
@@ -772,6 +777,8 @@ ENDM
         mSetearValorAVar prod_descripcion, 00H, 20H
         mSetearValorAVar prod_precio, 00H, 05H
         mSetearValorAVar prod_unidad, 00H, 05H
+        MOV num_precio, 0000
+        MOV num_unidad, 0000
         MOV bool_aux, 00
         mPausaE
         JMP CREAR_PRODUCTO
@@ -784,6 +791,8 @@ ENDM
         mSetearValorAVar prod_descripcion, 00H, 20H
         mSetearValorAVar prod_precio, 00H, 05H
         mSetearValorAVar prod_unidad, 00H, 05H
+        MOV num_precio, 0000
+        MOV num_unidad, 0000
         ; Regresando al menu de producto
         JMP MENU_PRODUCTO
 
@@ -920,6 +929,8 @@ ENDM
         mSetearValorAVar prod_descripcion, 00H, 20H
         mSetearValorAVar prod_precio, 00H, 05H
         mSetearValorAVar prod_unidad, 00H, 05H
+        MOV num_precio, 0000
+        MOV num_unidad, 0000
 
         ; Escribir el producto
         MOV BX, [handle_productos]
@@ -946,6 +957,8 @@ ENDM
         mSetearValorAVar prod_descripcion, 00H, 20H
         mSetearValorAVar prod_precio, 00H, 05H
         mSetearValorAVar prod_unidad, 00H, 05H
+        MOV num_precio, 0000
+        MOV num_unidad, 0000
 
         ; Retornando al menu de producto
         JMP MENU_PRODUCTO
@@ -1001,6 +1014,10 @@ ENDM
         mImprimirVar msg_mostrar_pro_l5
         mImprimirCadena prod_descripcion, 20H
 
+        ; Limpiando variables temporales
+        mSetearValorAVar prod_cod, 00H, 04H
+        mSetearValorAVar prod_descripcion, 00H, 20H
+
         POP CX ; Se obtiene la cantidad de veces a mostrar un producto
         SUB CX, 1 ; Se reduce a uno
         PUSH CX
@@ -1051,6 +1068,8 @@ ENDM
         mSetearValorAVar prod_descripcion, 00H, 20H
         mSetearValorAVar prod_precio, 00H, 05H
         mSetearValorAVar prod_unidad, 00H, 05H
+        MOV num_precio, 0000
+        MOV num_unidad, 0000
         ; Regresando al menu de producto
         JMP MENU_PRODUCTO
 
