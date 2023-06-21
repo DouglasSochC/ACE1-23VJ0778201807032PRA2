@@ -212,7 +212,7 @@ mGuardarVentaTemp MACRO
   INC DI
 
   ; Almacenando el codigo del producto
-  MOV SI, offset prod_cod
+  MOV SI, offset venta_prod_cod
   MOV CX, 0004H
   L_NOMBRE:
     MOV AL, [SI]
@@ -344,17 +344,22 @@ mGuardarArchVenta MACRO
   ; Inicializando escritura
   L_INICIO:
     MOV [handle_ventas], AX ; Almacenando la direccion de memoria del archivo abierto
-    MOV CX, 00 ; Registro que ayudara a almacenar la cantidad de ciclos a realizar para ubicarse en el espacio disponible
 
   L_ESCRIBIR:
 
     ; Escribir las ventas
     MOV BX, [handle_ventas]
 
+    ; Se posiciona el apuntador al final del archivo
+		MOV AL, 02
+		MOV CX, 00
+		MOV DX, 00
+		MOV AH, 42
+		int 21
+
     ; Se indica la cantidad de bytes a escribir
     MOV AH, 00
     MOV AL, venta_indice
-
     MOV CX, AX
     MOV DX, offset venta_temporal
     MOV AH, 40
@@ -580,12 +585,13 @@ ENDM
 ; D: Se encarga de convertir una cadena en su representacion hexadecimal, el registro que contiene
 ; el resultado sera el AX
 ; P1: val1 = Variable que representa la cadena
-mConvertCadenaANumero MACRO str1
+; P2: sz = Tamanio de la cadena
+mConvertCadenaANumero MACRO str1, sz
 
   LOCAL L_RECORRIDO, L_SALIDA
 
   MOV AX, 0000 ; Inicializando la salida
-  MOV CX, 0005 ; Cantidad de caracteres
+  MOV CX, sz ; Cantidad de caracteres
 
   MOV DI, offset str1
 
@@ -606,6 +612,125 @@ mConvertCadenaANumero MACRO str1
   LOOP L_RECORRIDO
 
   L_SALIDA:
+ENDM
+
+; S: Verificar Disponibilidad de Producto
+; D: Se encarga de verificar si hay unidades disponibles para realizar la venta de un producto, esta MACRO hace uso de la
+; variable 'venta_estado' para representar la respuesta final de esta MACRO (0: Correcto ; 1: No existe ; 2: No hay unidades)
+mVerificarDispProd MACRO
+
+  LOCAL L_VERIFICAR_TOTAL_ARCHIVO, L_LEYENDO_ARCHIVO, L_VERIFICAR_TOTAL_TEMP, L_CODIGO, L_SIGUIENTE_1, L_SIGUIENTE_2, L_ERROR_CODIGO, L_ERROR_UNIDADES, L_FIN
+
+  ; Se verifica si ya hay registros en la variable 'venta_temporal' a traves del indice
+  CMP venta_indice, 00H
+  JE L_VERIFICAR_TOTAL_ARCHIVO
+
+  ; Se determina la cantidad productos que estan temporalmente para la venta y se almacenan en el registro CX
+  MOV DX, 00H
+  MOV AH, 00
+  MOV AL, venta_indice
+  MOV BX, 0AH
+  DIV BX
+  MOV CX, AX
+
+  ; Se obtiene la posicion en memoria
+  MOV DI, offset venta_temporal
+
+  ; Se recorre la estructura temporal
+  L_VERIFICAR_TOTAL_TEMP:
+
+    ; Se lee la variable temporal para buscar los productos con X codigo
+    PUSH CX ; Debido a que hay un ciclo anidado es necesario almacenar el contador del primer ciclo
+    MOV SI, offset venta_aux_prod_cod ; Se obtiene la posicion en memoria de esta variable auxiliar ya que aqui se escribira el codigo obtenido de 'venta_temporal'
+    ADD DI, 05H ; Se recorre la variable hasta llegar a la posicion donde se encuentra el codigo del producto
+    MOV CX, 04H ; Debido a que el codigo es de 4 bytes se realizara 4 iteraciones en el ciclo L_CODIGO
+    L_CODIGO:
+      MOV BH, [DI]
+      MOV [SI], BH
+      INC DI
+      INC SI
+    LOOP L_CODIGO
+
+    PUSH DI ; Se almacena el DI debido a que al comparar las cadenas este se perdera
+    mCompCads venta_prod_cod, venta_aux_prod_cod, 04H ; Se realiza la comparacion entre el codigo ingresado por el usuario y el codigo obtenido temporalmente
+    POP DI ; Se vuelve a obtener el DI
+    JNE L_SIGUIENTE_1
+
+    ; En el caso que si se halla encontrado el codigo de producto se sumara a 'venta_aux_total_num_unidad'
+    MOV BH, 00H
+    MOV BL, [DI]
+    ADD venta_aux_total_num_unidad, BX
+    INC DI
+
+    L_SIGUIENTE_1:
+      POP CX ; Se obtiene el contador del primer ciclo
+
+  LOOP L_VERIFICAR_TOTAL_TEMP
+
+  ; Se identifica el producto y la cantidad de unidades actuales que este tiene
+  L_VERIFICAR_TOTAL_ARCHIVO:
+
+    ; Se suma el ingreso actual a la variable que maneja el total de unidades
+    MOV BH, 00
+    MOV BL, venta_num_unidad
+    ADD venta_aux_total_num_unidad, BX
+    INT 03
+    MOV AX, venta_aux_total_num_unidad
+
+    ; Abriendo el archivo (lectura)
+    MOV AL, 00
+    MOV AH, 3DH
+    MOV DX, offset arch_productos
+    INT 21
+    JC L_ERROR_CODIGO
+
+    ; Almacenando la direccion de memoria del archivo abierto
+    MOV [handle_productos], AX
+
+    L_LEYENDO_ARCHIVO:
+
+      ; Leyendo una estructura de producto
+      MOV BX, [handle_productos]
+      MOV CX, 28
+      MOV DX, offset aux_prod_cod
+      MOV AH, 3FH
+      INT 21
+
+      PUSH AX ; Se almacena la cantidad de caracteres leidos debido a que mCompCads utiliza AX
+      mCompCads aux_prod_cod, venta_prod_cod, 04H
+      POP AX ; Recupero el valor de AX de nuevo
+      JNE L_SIGUIENTE_2
+
+      ; Se verifica si hay en existencia, caso contrario se retorna un error
+      MOV BX, aux_prod_unidad
+      MOV AX, venta_aux_total_num_unidad
+      CMP venta_aux_total_num_unidad, BX
+      JG L_ERROR_UNIDADES
+      JNG L_FIN
+
+      L_SIGUIENTE_2:
+        ; Si la estructura leida es diferente de 0 entonces no se ha llegado a la parte final del archivo
+        CMP AX, 00
+    JNZ L_LEYENDO_ARCHIVO
+    JMP L_ERROR_CODIGO
+
+  L_ERROR_CODIGO:
+    MOV venta_estado, 01H
+    JMP L_FIN
+
+  L_ERROR_UNIDADES:
+    MOV venta_estado, 02H
+    JMP L_FIN
+
+  L_FIN:
+    MOV venta_aux_total_num_unidad, 0000H
+    mSetearValorAVar venta_aux_prod_cod, 00H, 04H
+
+    ; Cerrar archivo
+    MOV BX, [handle_productos]
+    MOV AH, 3EH
+    INT 21
+
 ENDM
 
 ; ********
@@ -690,13 +815,19 @@ ENDM
   msg_venta_pro_l4 db "Codigo: ", "$"
   msg_venta_pro_l5 db "Unidades: ", "$"
   msg_venta_pro_l6 db "Por favor, confirme su venta (y|n): ", 0AH, 0DH, "$"
+  msg_error_pro_l1 db "ERROR: No existe el codigo del producto ingresado", 0AH, 0DH, "$"
+  msg_error_pro_l2 db "ERROR: No hay unidades disponibles para vender", 0AH, 0DH, "$"
   opcion_venta_salir db "fin"
-  ; Este array de bytes representa las 10 estructuras temporales que se necesitan para almacenar una venta
-  ; 1 byte = dia ; 1 byte = mes ; 1 byte = anio ; 1 byte = hora ; 1 byte = minuto ; 2 bytes = codigo ; 1 byte unidad
-  ; Recordar: Cada byte se representa por 2 ceros
-  venta_temporal db 00A0H dup(0)
-  venta_indice db 00 ; Indica la posicion actual de escritura de una venta
-  venta_prod_unidad db 03 dup(0) ; Indica el valor de la unidad para realizar una venta
+  venta_temporal db 64H dup(0) ; Este array de bytes representa las 10 estructuras temporales que se necesitan para almacenar una venta (1 byte = dia ; 1 byte = mes ; 1 byte = anio ; 1 byte = hora ; 1 byte = minuto ; 4 bytes = codigo ; 1 byte = unidad)
+  venta_indice db 00 ; Indica la posicion actual de escritura de una venta en la variable 'venta_temporal'
+  venta_estado db 00 ; Indica el estado actual de la venta al verificar la disponibilidad de un producto - 0: Correcto ; 1: No existe ; 2: No hay unidades
+  venta_aux_prod_cod db 04H dup(0) ; Se utilizara para ir verificando el codigo de un producto en la variable temporal
+  venta_aux_total_num_unidad dw 0000 ; Se utilizara para ir sumando el total de producto que se ira a vender
+  ; venta_num_total dw 0000
+
+  ; Estructura de ingreso para una venta
+  venta_prod_cod db 04H dup(0)
+  venta_prod_unidad db 03H dup(0)
   venta_num_unidad db 00
 
   ; Util
@@ -881,7 +1012,7 @@ ENDM
       mValidarNumero prod_precio, 05H
       CMP bool_aux, 01
       JE @@error
-      mConvertCadenaANumero prod_precio
+      mConvertCadenaANumero prod_precio, 05H
       MOV num_precio, AX
       mImprimirVar salto_linea
 
@@ -894,7 +1025,7 @@ ENDM
       mValidarNumero prod_unidad, 05H
       CMP bool_aux, 01
       JE @@error
-      mConvertCadenaANumero prod_unidad
+      mConvertCadenaANumero prod_unidad, 05H
       MOV num_unidad, AX
       mImprimirVar salto_linea
 
@@ -1221,14 +1352,14 @@ ENDM
         mImprimirVar msg_venta_pro_l4
         mEntradaT 05
 
-        mCopiarBufferAVar prod_cod ; Se valida que la entrada poseea por lo menos un caracter
+        mCopiarBufferAVar venta_prod_cod ; Se valida que la entrada poseea por lo menos un caracter
         CMP bool_aux, 01
         JE @@formato_error
 
-        mCompCads prod_cod, opcion_venta_salir, 03H ; Se valida si el usuario escribio fin
+        mCompCads venta_prod_cod, opcion_venta_salir, 03H ; Se valida si el usuario escribio fin
         JE @@finalizacion_venta
 
-        mValidarCodigo prod_cod ; Se valida que poseea el formato de codigo
+        mValidarCodigo venta_prod_cod ; Se valida que poseea el formato de codigo
         CMP bool_aux, 01
         JE @@formato_error
         mImprimirVar salto_linea
@@ -1245,7 +1376,7 @@ ENDM
         CMP bool_aux, 01
         JE @@formato_error
 
-        mConvertCadenaANumero venta_prod_unidad ; Se convierte la cadena a un numero y se almacena en 'num_unidad'
+        mConvertCadenaANumero venta_prod_unidad, 03H ; Se convierte la cadena a un numero y se almacena en 'num_unidad'
         MOV venta_num_unidad, AL
 
         mImprimirVar salto_linea
@@ -1253,7 +1384,7 @@ ENDM
 
         @@formato_error:
           mImprimirVar msg_error_formato
-          mSetearValorAVar prod_cod, 00H, 04H
+          mSetearValorAVar venta_prod_cod, 00H, 04H
           mSetearValorAVar venta_prod_unidad, 00H, 03H
           MOV venta_num_unidad, 0000
           MOV bool_aux, 00
@@ -1261,11 +1392,40 @@ ENDM
           POP CX
           JMP @@realizando_venta
 
+        @@existencia_error:
+          mImprimirVar msg_error_pro_l1
+          mSetearValorAVar venta_prod_cod, 00H, 04H
+          mSetearValorAVar venta_prod_unidad, 00H, 03H
+          MOV venta_num_unidad, 00
+          MOV venta_estado, 00
+          mPausaE
+          POP CX
+          JMP @@realizando_venta
+
+        @@disponibilidad_error:
+          mImprimirVar msg_error_pro_l2
+          mSetearValorAVar venta_prod_cod, 00H, 04H
+          mSetearValorAVar venta_prod_unidad, 00H, 03H
+          MOV venta_num_unidad, 00
+          MOV venta_estado, 00
+          mPausaE
+          POP CX
+          JMP @@realizando_venta
+
+        ; Se verifica la disponibilidad del producto
         @@formato_correcto:
+          mVerificarDispProd
+          CMP venta_estado, 01H
+          JE @@existencia_error
+          CMP venta_estado, 02H
+          JE @@disponibilidad_error
+
+        @@producto_disponible:
+
           mGuardarVentaTemp
 
           ; Limpiando las variables temporales
-          mSetearValorAVar prod_cod, 00H, 04H
+          mSetearValorAVar venta_prod_cod, 00H, 04H
           mSetearValorAVar venta_prod_unidad, 00H, 03H
           MOV venta_num_unidad, 00
 
@@ -1299,6 +1459,10 @@ ENDM
 
       @@guardar_venta:
         mGuardarArchVenta
+
+        ; Limpiando las variables temporales
+        mSetearValorAVar venta_temporal, 00H, 64H
+        mSetearValorAVar venta_indice, 00H, 02H
 
       ; Realiza el guardado de la venta
       @@salir:
