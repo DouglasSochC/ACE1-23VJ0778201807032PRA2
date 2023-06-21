@@ -164,6 +164,71 @@ mCompCads MACRO str1, str2, sz
       ; El registro de indicadores (FLAGS) contiene el resultado de la comparación
 ENDM
 
+; S: Comparar Venta Temporalmente
+; D: Se encarga de almacenar temporalmente una venta utilizando las estructuras del .DATA para ventas
+mGuardarVentaTemp MACRO
+
+  LOCAL L_NOMBRE
+
+  ; Obteniendo la direccion en memoria de la variable auxiliar para ir recorriendo byte por byte
+  MOV DI, offset venta_temporal
+
+  ; Posicionando el puntero
+  MOV AH, 00
+  MOV AL, venta_indice
+  ADD DI, AX
+
+  ; ***************************************************************************
+  ; Una vez posicionado el puntero, se inicia con la escritura de la estructura
+  ; ***************************************************************************
+
+  ; Se obtiene la FECHA COMPLETA
+  MOV AH, 2AH
+  INT 21
+
+  ; Almacenando el dia
+  MOV [DI], DL
+  INC DI
+
+  ; Almacenando el mes
+  MOV [DI], DH
+  INC DI
+
+  ; Almacenando el anio
+  SUB CX, 7D0H
+  MOV [DI], CL
+  INC DI
+
+  ; Se obtiene la HORA COMPLETA
+  MOV AH, 2CH
+  INT 21
+
+   ; Almacenando la hora
+  MOV [DI], CH
+  INC DI
+
+  ; Almacenando el minuto
+  MOV [DI], CL
+  INC DI
+
+  ; Almacenando el codigo del producto
+  MOV SI, offset prod_cod
+  MOV CX, 0004H
+  L_NOMBRE:
+    MOV AL, [SI]
+    MOV [DI], AL
+    INC DI
+    INC SI
+  LOOP L_NOMBRE
+
+  ; Almacenando las unidades a vender
+  MOV AL, venta_num_unidad
+  MOV [DI], AL
+
+  ; Se indica donde esta el indice actual para almacenar nueva informacion de venta
+  ADD venta_indice, 0AH
+ENDM
+
 ; S: Guardar Archivo Producto
 ; D: Se encarga de almacenar la estructura completa de un producto
 mGuardarArchProd MACRO
@@ -253,6 +318,50 @@ mGuardarArchProd MACRO
 
     ; Cerrar archivo
     MOV BX, [handle_productos]
+    MOV AH, 3EH
+    INT 21
+ENDM
+
+; S: Guardar Archivo Venta
+; D: Se encarga de almacenar la estructura completa de un venta
+mGuardarArchVenta MACRO
+
+  LOCAL L_INICIO, L_ESCRIBIR
+
+  ; Abriendo el archivo (para lectura/escritura) segun el nombre
+  MOV AL, 02
+  MOV AH, 3DH
+  MOV DX, offset arch_ventas
+  INT 21
+  JNC L_INICIO ; Si ya existe el archivo se dirige a escribir los datos
+
+  ; Creando archivo en el caso que no exista
+  MOV CX, 0000
+  MOV DX, offset arch_ventas
+  MOV AH, 3CH
+  INT 21
+
+  ; Inicializando escritura
+  L_INICIO:
+    MOV [handle_ventas], AX ; Almacenando la direccion de memoria del archivo abierto
+    MOV CX, 00 ; Registro que ayudara a almacenar la cantidad de ciclos a realizar para ubicarse en el espacio disponible
+
+  L_ESCRIBIR:
+
+    ; Escribir las ventas
+    MOV BX, [handle_ventas]
+
+    ; Se indica la cantidad de bytes a escribir
+    MOV AH, 00
+    MOV AL, venta_indice
+
+    MOV CX, AX
+    MOV DX, offset venta_temporal
+    MOV AH, 40
+    INT 21
+
+    ; Cerrar archivo
+    MOV BX, [handle_ventas]
     MOV AH, 3EH
     INT 21
 ENDM
@@ -370,11 +479,13 @@ ENDM
 ; S: Validar Numero
 ; D: Se encarga de validar que el parametro solicitado sigue la expresion regular [0-9]+ con un tamanio de 5 (05H)
 ; en el caso que halla un error la variable 'bool_aux' es 01H y en el caso que no halla, el valor de 'bool_aux' es 00H
-mValidarNumero MACRO str1
+; P1: str1 = Es la cadena que contiene el numero
+; P2: sz = Es el tamanio de la cadena
+mValidarNumero MACRO str1, sz
   LOCAL L_CARACTER, L_SIGUIENTE, L_CORRECTO, L_ERROR, L_SALIDA
 
   MOV DI, offset str1 ; Se almacena la posicion en memoria de la variable
-  MOV CX, 05H ; Se define el tamanio del str1
+  MOV CX, sz ; Se define el tamanio del str1
 
   L_CARACTER:
     MOV AL, [DI] ; Se obtiene el caracter del str1
@@ -572,6 +683,22 @@ ENDM
   error_eliminar_pro_2 db "El codigo ingresado no existe", "$"
   prod_cod_eliminar db 04 dup(0)
 
+  ; Venta
+  msg_venta_pro_l1 db "***************", 0AH, 0DH, "$"
+  msg_venta_pro_l2 db "GENERANDO VENTA", 0AH, 0DH, "$"
+  msg_venta_pro_l3 db "***************", 0AH, 0DH, "$"
+  msg_venta_pro_l4 db "Codigo: ", "$"
+  msg_venta_pro_l5 db "Unidades: ", "$"
+  msg_venta_pro_l6 db "Por favor, confirme su venta (y|n): ", 0AH, 0DH, "$"
+  opcion_venta_salir db "fin"
+  ; Este array de bytes representa las 10 estructuras temporales que se necesitan para almacenar una venta
+  ; 1 byte = dia ; 1 byte = mes ; 1 byte = anio ; 1 byte = hora ; 1 byte = minuto ; 2 bytes = codigo ; 1 byte unidad
+  ; Recordar: Cada byte se representa por 2 ceros
+  venta_temporal db 00A0H dup(0)
+  venta_indice db 00 ; Indica la posicion actual de escritura de una venta
+  venta_prod_unidad db 03 dup(0) ; Indica el valor de la unidad para realizar una venta
+  venta_num_unidad db 00
+
   ; Util
   buffer_entrada db 20, 00, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
   comando db 13 dup(?)
@@ -599,6 +726,8 @@ ENDM
   handle_credenciales dw 0000
   arch_productos db "PROD.BIN",0
   handle_productos dw 0000
+  arch_ventas db "VENT.BIN",0
+  handle_ventas dw 0000
 
 .CODE
 .STARTUP
@@ -749,7 +878,7 @@ ENDM
       mCopiarBufferAVar prod_precio
       CMP bool_aux, 01
       JE @@error
-      mValidarNumero prod_precio
+      mValidarNumero prod_precio, 05H
       CMP bool_aux, 01
       JE @@error
       mConvertCadenaANumero prod_precio
@@ -762,7 +891,7 @@ ENDM
       mCopiarBufferAVar prod_unidad
       CMP bool_aux, 01
       JE @@error
-      mValidarNumero prod_unidad
+      mValidarNumero prod_unidad, 05H
       CMP bool_aux, 01
       JE @@error
       mConvertCadenaANumero prod_unidad
@@ -1076,6 +1205,104 @@ ENDM
     MOSTRAR_PRODUCTO ENDP
 
     VENTAS PROC
+
+      mLimpiarC
+      mImprimirVar msg_venta_pro_l1
+      mImprimirVar msg_venta_pro_l2
+      mImprimirVar msg_venta_pro_l3
+      MOV venta_indice, 00H
+      MOV CX, 0AH
+
+      @@realizando_venta:
+
+        PUSH CX
+
+        ; Solicitando el codigo
+        mImprimirVar msg_venta_pro_l4
+        mEntradaT 05
+
+        mCopiarBufferAVar prod_cod ; Se valida que la entrada poseea por lo menos un caracter
+        CMP bool_aux, 01
+        JE @@formato_error
+
+        mCompCads prod_cod, opcion_venta_salir, 03H ; Se valida si el usuario escribio fin
+        JE @@finalizacion_venta
+
+        mValidarCodigo prod_cod ; Se valida que poseea el formato de codigo
+        CMP bool_aux, 01
+        JE @@formato_error
+        mImprimirVar salto_linea
+
+        ; Solicitando las unidades
+        mImprimirVar msg_venta_pro_l5
+        mEntradaT 04
+
+        mCopiarBufferAVar venta_prod_unidad ; Se valida que la entrada poseea por lo menos un caracter
+        CMP bool_aux, 01
+        JE @@formato_error
+
+        mValidarNumero venta_prod_unidad, 03H ; Se valida que poseea el formato de numero
+        CMP bool_aux, 01
+        JE @@formato_error
+
+        mConvertCadenaANumero venta_prod_unidad ; Se convierte la cadena a un numero y se almacena en 'num_unidad'
+        MOV venta_num_unidad, AL
+
+        mImprimirVar salto_linea
+        JMP @@formato_correcto
+
+        @@formato_error:
+          mImprimirVar msg_error_formato
+          mSetearValorAVar prod_cod, 00H, 04H
+          mSetearValorAVar venta_prod_unidad, 00H, 03H
+          MOV venta_num_unidad, 0000
+          MOV bool_aux, 00
+          mPausaE
+          POP CX
+          JMP @@realizando_venta
+
+        @@formato_correcto:
+          mGuardarVentaTemp
+
+          ; Limpiando las variables temporales
+          mSetearValorAVar prod_cod, 00H, 04H
+          mSetearValorAVar venta_prod_unidad, 00H, 03H
+          MOV venta_num_unidad, 00
+
+          ; Se indica que ya ha sido ingresado un producto en memoria
+          POP CX
+          DEC CX
+          CMP CX, 00
+
+      JNE @@realizando_venta
+
+      @@finalizacion_venta:
+        POP CX
+
+      @@confirmacion_venta:
+          mImprimirVar msg_venta_pro_l6
+
+          ; Se lee el caracter para seguir leyendo el archivo o retornar al menu principal
+          MOV AH, 08H
+          INT 21H
+
+          ; En el caso que sea 'y'
+          CMP AL, 79H
+          JE @@guardar_venta
+
+          ; En el caso que sea 'n'
+          CMP AL, 6EH
+          JE @@salir
+
+          ; En el caso que no sea alguna de las anteriores
+          JMP @@confirmacion_venta
+
+      @@guardar_venta:
+        mGuardarArchVenta
+
+      ; Realiza el guardado de la venta
+      @@salir:
+        JMP MENU_PRINCIPAL
 
     VENTAS ENDP
 
