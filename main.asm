@@ -101,7 +101,6 @@ ENDM
 ; S: Copiar A Variable
 ; D: Se utiliza para copiar la informacion que contiene el buffer_entrada a una variable declarada en el segmento de datos
 ; en el caso que en el buffer de entrada no se halla ingresado algun caracter, entonces no se realizara el copiado de datos
-; y ademas se seteara 01H la variable 'bool_aux' debido a que a ocurrido un error
 ; P1: str1 = Variable a recibir y almacenar los datos
 mCopiarBufferAVar MACRO str1
   LOCAL L_COPIAR, L_ERROR, L_SALIR
@@ -127,7 +126,7 @@ mCopiarBufferAVar MACRO str1
   JMP L_SALIR
 
   L_ERROR:
-    MOV bool_aux, 01
+    MOV parseo_estado, 01
 
   L_SALIR:
 ENDM
@@ -372,8 +371,7 @@ mGuardarArchVenta MACRO
 ENDM
 
 ; S: Validar Codigo
-; D: Se encarga de validar que el parametro solicitado sigue la expresion regular [A-Z0-9]+ 4 (04H)
-; en el caso que halla un error la variable 'bool_aux' es 01H y en el caso que no halla, el valor de 'bool_aux' es 00H
+; D: Se encarga de validar que el parametro solicitado sigue la expresion regular [A-Z0-9]+ con un tamanio de 4 (4H)
 mValidarCodigo MACRO str1
   LOCAL L_CARACTER, L_SIGUIENTE, L_LETRA, L_CORRECTO, L_ERROR, L_SALIDA
 
@@ -407,18 +405,17 @@ mValidarCodigo MACRO str1
   JMP L_CORRECTO
 
   L_ERROR:
-    MOV bool_aux, 01
+    MOV parseo_estado, 01
     JMP L_SALIDA
 
   L_CORRECTO:
-    MOV bool_aux, 00
+    MOV parseo_estado, 00
 
   L_SALIDA:
 ENDM
 
 ; S: Validar Descripcion
 ; D: Se encarga de validar que el parametro solicitado sigue la expresion regular [A-Za-z0-9,.!]+ con un tamanio de 32 (20H)
-; en el caso que halla un error la variable 'bool_aux' es 01H y en el caso que no halla, el valor de 'bool_aux' es 00H
 mValidarDescripcion MACRO str1
   LOCAL L_CARACTER, L_SIGUIENTE, L_MAYUSCULA, L_MINUSCULA, L_ESPECIAL, L_CORRECTO, L_ERROR, L_SALIDA
 
@@ -472,18 +469,17 @@ mValidarDescripcion MACRO str1
   JMP L_CORRECTO
 
   L_ERROR:
-    MOV bool_aux, 01
+    MOV parseo_estado, 01
     JMP L_SALIDA
 
   L_CORRECTO:
-    MOV bool_aux, 00
+    MOV parseo_estado, 00
 
   L_SALIDA:
 ENDM
 
 ; S: Validar Numero
-; D: Se encarga de validar que el parametro solicitado sigue la expresion regular [0-9]+ con un tamanio de 5 (05H)
-; en el caso que halla un error la variable 'bool_aux' es 01H y en el caso que no halla, el valor de 'bool_aux' es 00H
+; D: Se encarga de validar que el parametro solicitado sigue la expresion regular [0-9]+
 ; P1: str1 = Es la cadena que contiene el numero
 ; P2: sz = Es el tamanio de la cadena
 mValidarNumero MACRO str1, sz
@@ -511,11 +507,11 @@ mValidarNumero MACRO str1, sz
   JMP L_CORRECTO
 
   L_ERROR:
-    MOV bool_aux, 01
+    MOV parseo_estado, 01
     JMP L_SALIDA
 
   L_CORRECTO:
-    MOV bool_aux, 00
+    MOV parseo_estado, 00
 
   L_SALIDA:
 ENDM
@@ -588,12 +584,11 @@ ENDM
 ; P2: sz = Tamanio de la cadena
 mConvertCadenaANumero MACRO str1, sz
 
-  LOCAL L_RECORRIDO, L_SALIDA
+  LOCAL L_RECORRIDO, L_SALIDA, L_ERROR, L_STR_3
 
   MOV AX, 0000 ; Inicializando la salida
   MOV CX, sz ; Cantidad de caracteres
-
-  MOV DI, offset str1
+  MOV DI, offset str1 ; Obteniendo la posicion en memoria del string a convertir
 
   L_RECORRIDO:
     MOV BL, [DI] ; Se obtiene el caracter
@@ -602,14 +597,31 @@ mConvertCadenaANumero MACRO str1, sz
     CMP BL, 00
     JE L_SALIDA
 
+    ; En el caso que el caracter no es nulo, se busca su representacion en hexadecimal
     SUB BL, 30H
     MOV DX, 000AH ; Se multiplicara el valor obtenido * 10
-    MUL DX  ; Significa AX * DX
+    MUL DX  ; Significa AX * DX osea AX * 10
+    JO L_ERROR ; Error en el caso que la multiplicacion de un desbordamiento
 
     MOV BH, 00H
     ADD AX, BX
+    JC L_ERROR ; Error en el caso que la multiplicacion de un desbordamiento
     INC DI
   LOOP L_RECORRIDO
+
+  MOV BX, sz
+  CMP BX, 03H
+  JE L_STR_3
+  JMP L_SALIDA
+
+  ; Se verifica si ocurre un desbordamiento en el caso que la estructura sea de un byte
+  L_STR_3:
+    CMP AH, 00
+    JG L_ERROR
+    JMP L_SALIDA
+
+  L_ERROR:
+    MOV parseo_estado, 02H
 
   L_SALIDA:
 ENDM
@@ -674,7 +686,6 @@ mVerificarDispProd MACRO
     MOV BH, 00
     MOV BL, venta_num_unidad
     ADD venta_aux_total_num_unidad, BX
-    INT 03
     MOV AX, venta_aux_total_num_unidad
 
     ; Abriendo el archivo (lectura)
@@ -835,7 +846,8 @@ ENDM
   comando db 13 dup(?)
   msg_util_1 db 0AH, 0DH, " Presione ENTER para continuar...", 0AH, 0DH, "$"
   msg_error_formato db 0AH, 0DH, "El formato ingresado es incorrecto", 0AH, 0DH, "$"
-  bool_aux db 0 ; Sirve como auxiliar para validar las entradas realizadas por el usuario
+  msg_error_desbordamiento db 0AH, 0DH, "El valor ingresado no es compatible con la capacidad de la maquina", 0AH, 0DH, "$"
+  parseo_estado db 0 ; Indica el estado actual de la verificacion de una entrada a traves de consola - 0: Correcto ; 1:Parseo incorrecto ; 2:Desbordamiento
 
   ; Estructura del producto
   prod_cod db 04 dup(0)
@@ -985,10 +997,10 @@ ENDM
       mImprimirVar msg_crear_pro_l4
       mEntradaT 05
       mCopiarBufferAVar prod_cod
-      CMP bool_aux, 01
+      CMP parseo_estado, 01
       JE @@error
       mValidarCodigo prod_cod
-      CMP bool_aux, 01
+      CMP parseo_estado, 01
       JE @@error
       mImprimirVar salto_linea
 
@@ -996,10 +1008,10 @@ ENDM
       mImprimirVar msg_crear_pro_l5
       mEntradaT 21
       mCopiarBufferAVar prod_descripcion
-      CMP bool_aux, 01
+      CMP parseo_estado, 01
       JE @@error
       mValidarDescripcion prod_descripcion
-      CMP bool_aux, 01
+      CMP parseo_estado, 01
       JE @@error
       mImprimirVar salto_linea
 
@@ -1007,12 +1019,14 @@ ENDM
       mImprimirVar msg_crear_pro_l6
       mEntradaT 06
       mCopiarBufferAVar prod_precio
-      CMP bool_aux, 01
+      CMP parseo_estado, 01
       JE @@error
       mValidarNumero prod_precio, 05H
-      CMP bool_aux, 01
+      CMP parseo_estado, 01
       JE @@error
       mConvertCadenaANumero prod_precio, 05H
+      CMP parseo_estado, 02
+      JE @@desbordamiento_error
       MOV num_precio, AX
       mImprimirVar salto_linea
 
@@ -1020,12 +1034,14 @@ ENDM
       mImprimirVar msg_crear_pro_l7
       mEntradaT 06
       mCopiarBufferAVar prod_unidad
-      CMP bool_aux, 01
+      CMP parseo_estado, 01
       JE @@error
       mValidarNumero prod_unidad, 05H
-      CMP bool_aux, 01
+      CMP parseo_estado, 01
       JE @@error
       mConvertCadenaANumero prod_unidad, 05H
+      CMP parseo_estado, 02
+      JE @@desbordamiento_error
       MOV num_unidad, AX
       mImprimirVar salto_linea
 
@@ -1039,7 +1055,19 @@ ENDM
         mSetearValorAVar prod_unidad, 00H, 05H
         MOV num_precio, 0000
         MOV num_unidad, 0000
-        MOV bool_aux, 00
+        MOV parseo_estado, 00
+        mPausaE
+        JMP CREAR_PRODUCTO
+
+      @@desbordamiento_error:
+        mImprimirVar msg_error_desbordamiento
+        mSetearValorAVar prod_cod, 00H, 04H
+        mSetearValorAVar prod_descripcion, 00H, 20H
+        mSetearValorAVar prod_precio, 00H, 05H
+        mSetearValorAVar prod_unidad, 00H, 05H
+        MOV num_precio, 0000
+        MOV num_unidad, 0000
+        MOV parseo_estado, 00
         mPausaE
         JMP CREAR_PRODUCTO
 
@@ -1069,10 +1097,10 @@ ENDM
       mImprimirVar msg_eliminar_pro_l4
       mEntradaT 05
       mCopiarBufferAVar prod_cod_eliminar
-      CMP bool_aux, 01
+      CMP parseo_estado, 01
       JE @@error_formato
       mValidarCodigo prod_cod_eliminar
-      CMP bool_aux, 01
+      CMP parseo_estado, 01
       JE @@error_formato
       mImprimirVar salto_linea
 
@@ -1150,7 +1178,7 @@ ENDM
       @@error_formato:
         mImprimirVar msg_error_formato
         mSetearValorAVar prod_cod_eliminar, 00H, 04H
-        MOV bool_aux, 00
+        MOV parseo_estado, 00
         mPausaE
         JMP ELIMINAR_PRODUCTO
 
@@ -1353,14 +1381,14 @@ ENDM
         mEntradaT 05
 
         mCopiarBufferAVar venta_prod_cod ; Se valida que la entrada poseea por lo menos un caracter
-        CMP bool_aux, 01
+        CMP parseo_estado, 01
         JE @@formato_error
 
         mCompCads venta_prod_cod, opcion_venta_salir, 03H ; Se valida si el usuario escribio fin
         JE @@finalizacion_venta
 
         mValidarCodigo venta_prod_cod ; Se valida que poseea el formato de codigo
-        CMP bool_aux, 01
+        CMP parseo_estado, 01
         JE @@formato_error
         mImprimirVar salto_linea
 
@@ -1369,14 +1397,16 @@ ENDM
         mEntradaT 04
 
         mCopiarBufferAVar venta_prod_unidad ; Se valida que la entrada poseea por lo menos un caracter
-        CMP bool_aux, 01
+        CMP parseo_estado, 01
         JE @@formato_error
 
         mValidarNumero venta_prod_unidad, 03H ; Se valida que poseea el formato de numero
-        CMP bool_aux, 01
+        CMP parseo_estado, 01
         JE @@formato_error
 
         mConvertCadenaANumero venta_prod_unidad, 03H ; Se convierte la cadena a un numero y se almacena en 'num_unidad'
+        CMP parseo_estado, 02
+        JE @@desbordamiento_error
         MOV venta_num_unidad, AL
 
         mImprimirVar salto_linea
@@ -1387,7 +1417,17 @@ ENDM
           mSetearValorAVar venta_prod_cod, 00H, 04H
           mSetearValorAVar venta_prod_unidad, 00H, 03H
           MOV venta_num_unidad, 0000
-          MOV bool_aux, 00
+          MOV parseo_estado, 00
+          mPausaE
+          POP CX
+          JMP @@realizando_venta
+
+        @@desbordamiento_error:
+          mImprimirVar msg_error_desbordamiento
+          mSetearValorAVar venta_prod_cod, 00H, 04H
+          mSetearValorAVar venta_prod_unidad, 00H, 03H
+          MOV venta_num_unidad, 0000
+          MOV parseo_estado, 00
           mPausaE
           POP CX
           JMP @@realizando_venta
@@ -1460,12 +1500,15 @@ ENDM
       @@guardar_venta:
         mGuardarArchVenta
 
+      ; Realiza el guardado de la venta
+      @@salir:
         ; Limpiando las variables temporales
         mSetearValorAVar venta_temporal, 00H, 64H
         mSetearValorAVar venta_indice, 00H, 02H
-
-      ; Realiza el guardado de la venta
-      @@salir:
+        mSetearValorAVar venta_prod_cod, 00H, 04H
+        mSetearValorAVar venta_prod_unidad, 00H, 03H
+        MOV venta_num_unidad, 0000
+        MOV parseo_estado, 00
         JMP MENU_PRINCIPAL
 
     VENTAS ENDP
