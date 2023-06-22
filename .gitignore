@@ -2,3 +2,5 @@ MAIN.EXE
 MAIN.OBJ
 Makefile
 *.BIN
+*.HTM
+*.TXT
