@@ -370,6 +370,136 @@ mGuardarArchVenta MACRO
     INT 21
 ENDM
 
+; S: Modificar Unidades Archivo Producto
+; D: Se encarga de modificar el valor de las unidades de los productos contenidos en la variable 'venta_temporal'
+mModificarUnidArchProd MACRO
+
+  LOCAL L_TEMPORAL, L_BUSQUEDA, L_MODIFICADO, L_CERRAR_ARCHIVO, L_SIGUIENTE, L_CODIGO, L_FINAL
+
+  ; Se verifica si ya hay registros en la variable 'venta_temporal' a traves del indice
+  CMP venta_indice, 00H
+  JE L_FINAL
+
+  ; Abriendo el archivo (para lectura/escritura) para realizar la modificacion de unidades de cada producto
+  MOV AL, 02
+  MOV AH, 3DH
+  MOV DX, offset arch_productos
+  INT 21
+  MOV [handle_productos], AX ; Almacenando la direccion de memoria del archivo abierto
+
+  ; Se determina la cantidad productos que estan temporalmente para la venta y se almacenan en el registro CX
+  MOV DX, 00H
+  MOV AH, 00
+  MOV AL, venta_indice
+  MOV BX, 0AH
+  DIV BX
+  MOV CX, AX
+
+  ; Se obtiene la posicion en memoria
+  MOV DI, offset venta_temporal
+
+  ; Se recorre la estructura temporal
+  L_TEMPORAL:
+
+    ; Se lee la variable temporal para buscar los productos con X codigo
+    PUSH CX ; Debido a que hay un ciclo anidado es necesario almacenar el contador del primer ciclo
+    MOV SI, offset venta_aux_prod_cod ; Se obtiene la posicion en memoria de esta variable auxiliar ya que aqui se escribira el codigo obtenido de 'venta_temporal'
+    ADD DI, 05H ; Se recorre la variable hasta llegar a la posicion donde se encuentra el codigo del producto
+    MOV CX, 04H ; Debido a que el codigo es de 4 bytes se realizara 4 iteraciones en el ciclo L_CODIGO
+    L_CODIGO:
+      MOV BH, [DI]
+      MOV [SI], BH
+      INC DI
+      INC SI
+    LOOP L_CODIGO
+    MOV BH, 00
+    MOV BL, [DI]
+    MOV venta_aux_prod_unidad, BX
+    INC DI
+
+    PUSH DI ; Debido a que se debe modificar la cantidad de unidades del producto en el archivo, es necesario almacenar este DI por cualquier cosa
+    ; RECORDAR: En 'venta_aux_prod_cod' obtengo el codigo de producto actual del 'venta_temporal'
+
+    ; Leyendo el archivo y buscando el producto que tenga el codigo de 'venta_aux_prod_cod'
+    L_BUSQUEDA:
+
+      ; Leyendo el archivo
+      MOV BX, [handle_productos]
+      MOV CX, 28H
+      MOV DX, offset aux_prod_cod
+      MOV AH, 3FH
+      INT 21
+      PUSH AX ; Se almacena temporalmente la cantidad de bytes leidos en el archivo
+
+        mCompCads aux_prod_cod, venta_aux_prod_cod, 04H
+        JNE L_SIGUIENTE ; Si no salta quiere decir que encontro el producto y se modificara su unidad
+
+        ; Se obtiene la posicion actual del puntero
+        MOV AL, 01
+        MOV AH, 42H
+        MOV BX, [handle_productos]
+        MOV CX, 00
+        MOV DX, 00
+        INT 21
+
+        ; Se le reduce 28H bytes para posicionarlo en la posicion donde se encontro el producto
+        SUB AX, 28H
+        MOV venta_pos_prod_modificar, AX
+
+        ; Se reposiciona el puntero del archivo en el lugar a modificar
+        MOV AL, 00
+        MOV AH, 42H
+        MOV BX, [handle_productos]
+        MOV CX, 00
+        MOV DX, venta_pos_prod_modificar
+        INT 21
+
+        ; Se modifica la unidad actual
+        MOV AX, venta_aux_prod_unidad
+        SUB aux_prod_unidad, AX
+
+        ; Se vuelve a escribir la estructura en el archivo de los productos
+        MOV BX, [handle_productos]
+        MOV CX, 28H
+        MOV DX, offset aux_prod_cod
+        MOV AH, 40
+        INT 21
+
+        ; Se reposiciona el puntero al inicio del archivo para que cada vez que modifique las unidades de un producto, el puntero de lectura inicie al principio
+        MOV AL, 00
+        MOV AH, 42H
+        MOV BX, [handle_productos]
+        MOV CX, 00
+        MOV DX, 00
+        INT 21
+
+        ; Se indica que se ha actualizado el producto en el archivo PROD.BIN
+        POP AX
+        JMP L_MODIFICADO
+
+      L_SIGUIENTE:
+        POP AX
+        CMP AX, 00 ; Si la estructura leida es 0 entonces ya se ha llegado a la parte final del archivo
+    JNZ L_BUSQUEDA
+
+    L_MODIFICADO:
+      POP DI ; Se obtiene el DI para el siguiente ciclo
+      POP CX ; Se obtiene el contador del primer ciclo
+      DEC CX
+  CMP CX, 00
+  JNE L_TEMPORAL
+
+  L_CERRAR_ARCHIVO:
+    ; Cerrar archivo
+    MOV BX, [handle_ventas]
+    MOV AH, 3EH
+    INT 21
+
+  L_FINAL:
+
+
+ENDM
+
 ; S: Validar Codigo
 ; D: Se encarga de validar que el parametro solicitado sigue la expresion regular [A-Z0-9]+ con un tamanio de 4 (4H)
 mValidarCodigo MACRO str1
@@ -714,7 +844,6 @@ mVerificarDispProd MACRO
 
       ; Se verifica si hay en existencia, caso contrario se retorna un error
       MOV BX, aux_prod_unidad
-      MOV AX, venta_aux_total_num_unidad
       CMP venta_aux_total_num_unidad, BX
       JG L_ERROR_UNIDADES
       JNG L_FIN
@@ -833,7 +962,9 @@ ENDM
   venta_indice db 00 ; Indica la posicion actual de escritura de una venta en la variable 'venta_temporal'
   venta_estado db 00 ; Indica el estado actual de la venta al verificar la disponibilidad de un producto - 0: Correcto ; 1: No existe ; 2: No hay unidades
   venta_aux_prod_cod db 04H dup(0) ; Se utilizara para ir verificando el codigo de un producto en la variable temporal
+  venta_aux_prod_unidad dw 0000 ; Se utiliza para almacenar la cantidad de unidades que se reduciran en un producto al realizar la venta
   venta_aux_total_num_unidad dw 0000 ; Se utilizara para ir sumando el total de producto que se ira a vender
+  venta_pos_prod_modificar dw 0000 ; Se utiliza para determinar la posicion actual del producto a modificar
   ; venta_num_total dw 0000
 
   ; Estructura de ingreso para una venta
@@ -1499,6 +1630,7 @@ ENDM
 
       @@guardar_venta:
         mGuardarArchVenta
+        mModificarUnidArchProd
 
       ; Realiza el guardado de la venta
       @@salir:
