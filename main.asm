@@ -672,7 +672,7 @@ ENDM
 ; P2: str1 = Variable en donde se almacenara la cadena
 mConvertNumeroACadena MACRO val1, str1
 
-  LOCAL L_DIVISION, L_ALMACENAR
+  LOCAL L_DIVISION, L_ALMACENAR, L_CERO, L_FIN
 
   ; Inicializando los registros que se utilizaran para la conversion
   MOV AX, val1
@@ -680,6 +680,10 @@ mConvertNumeroACadena MACRO val1, str1
   MOV DX, 0000
   MOV CX, 0000
   MOV BX, 000AH ; 10 (0AH)
+
+  ; Verificando que el val1 sea mayor a 0
+  CMP AX, 0000
+  JE L_CERO
 
   L_DIVISION:
     CMP AX, 00H
@@ -704,6 +708,13 @@ mConvertNumeroACadena MACRO val1, str1
     INC SI ; Se incrementa en 1
 
   LOOP L_ALMACENAR
+  JMP L_FIN
+
+  L_CERO:
+    MOV DL, 30H
+    MOV [SI], DL
+
+  L_FIN:
 
 ENDM
 
@@ -1003,10 +1014,11 @@ ENDM
   buffer_entrada db 20, 00, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
   comando db 13 dup(?)
   msg_util_1 db 0AH, 0DH, " Presione ENTER para continuar...", 0AH, 0DH, "$"
-  msg_util_2 db 0AH, 0DH, " Reporte generado correctamente", 0AH, 0DH, "$"
+  msg_util_2 db 0AH, 0DH, "Reporte generado correctamente", 0AH, 0DH, "$"
   msg_error_formato db 0AH, 0DH, "El formato ingresado es incorrecto", 0AH, 0DH, "$"
   msg_error_desbordamiento db 0AH, 0DH, "El valor ingresado no es compatible con la capacidad de la maquina", 0AH, 0DH, "$"
-  msg_error_ventas db "ERROR: No se ha realizado ventas", 0AH, 0DH, "$"
+  msg_error_ventas db 0AH, 0DH, "ERROR: No se ha realizado ventas", 0AH, 0DH, "$"
+  msg_error_productos db 0AH, 0DH, "ERROR: No se ha ingresado productos al sistema", 0AH, 0DH, "$"
   parseo_estado db 0 ; Indica el estado actual de la verificacion de una entrada a traves de consola - 0: Correcto ; 1:Parseo incorrecto ; 2:Desbordamiento
   reporte_aux_fecha dW 0000 ; Servira como registro auxiliar para almacenar los valores obtenidos para las fechas
   reporte_titulo_fecha db "Reporte generado: " ; 18 bytes
@@ -1044,6 +1056,8 @@ ENDM
   handle_ventas dw 0000
   arch_rep_catalogo_completo db "CATALG.HTM",0
   handle_rep_catalogo_completo dw 0000
+  arch_rep_sin_existencias db "FALTA.HTM",0
+  handle_rep_sin_existencias dw 0000
 
 .CODE
 .STARTUP
@@ -1172,6 +1186,9 @@ ENDM
 
       mCompCads comando, opcion_herr_1, 1
       JE REP_CATALOGO_COMPLETO
+
+      mCompCads comando, opcion_herr_4, 1
+      JE REP_SIN_EXISTENCIAS
 
       JMP MENU_HERRAMIENTAS
 
@@ -1976,8 +1993,9 @@ ENDM
         INT 21
 
         ; Mensaje de advertencia
-        mImprimirVar msg_error_ventas
+        mImprimirVar msg_error_productos
         mPausaE
+        JMP MENU_HERRAMIENTAS
 
       @@fin:
         mImprimirVar msg_util_2
@@ -1985,6 +2003,293 @@ ENDM
         JMP MENU_HERRAMIENTAS
 
     REP_CATALOGO_COMPLETO ENDP
+
+    REP_SIN_EXISTENCIAS PROC
+
+      ; Se elimina el archivo del reporte en el caso que ya exista
+      MOV AH, 41H
+      MOV DX, offset arch_rep_sin_existencias
+      INT 21
+
+      ; Creando nuevamente el archivo
+      MOV CX, 0000
+      MOV DX, offset arch_rep_sin_existencias
+      MOV AH, 3CH
+      INT 21
+
+      ; Almacenando la direccion de memoria del archivo abierto
+      MOV [handle_rep_sin_existencias], AX
+
+      ; Abriendo el archivo (para lectura)
+      MOV AL, 00
+      MOV AH, 3DH
+      MOV DX, offset arch_productos
+      INT 21
+      JC @@error_existencia ; Si no existe el archivo se dirige a enviar un mensaje de error
+
+      ; Almacenando la direccion de memoria del archivo abierto
+      MOV [handle_productos], AX
+
+      ; Obteniendo FECHA COMPLETA
+      MOV AH, 2AH
+      INT 21
+
+      ; Almacenando el dia
+      MOV AX, 0000
+      MOV AL, DL
+      MOV reporte_aux_fecha, AX
+      PUSH CX
+      PUSH DX
+      mConvertNumeroACadena reporte_aux_fecha, reporte_dia
+      POP DX
+
+      ; Almacenando el mes
+      MOV AX, 0000
+      MOV AL, DH
+      MOV reporte_aux_fecha, AX
+      mConvertNumeroACadena reporte_aux_fecha, reporte_mes
+      POP CX
+
+      ; Almacenando el anio
+      SUB CX, 7D0H
+      MOV AX, 0000
+      MOV AL, CL
+      MOV reporte_aux_fecha, AX
+      mConvertNumeroACadena reporte_aux_fecha, reporte_anio
+
+      ; Se obtiene la HORA COMPLETA
+      MOV AH, 2CH
+      INT 21
+
+      ; Almacenando la hora
+      MOV AX, 0000
+      MOV AL, CH
+      MOV reporte_aux_fecha, AX
+      PUSH CX
+      mConvertNumeroACadena reporte_aux_fecha, reporte_hora
+      POP CX
+
+      ; Almacenando el minuto
+      MOV AX, 0000
+      MOV AL, CL
+      MOV reporte_aux_fecha, AX
+      mConvertNumeroACadena reporte_aux_fecha, reporte_minutos
+
+      ; Se escribe la fecha y hora de este reporte
+      MOV BX, [handle_rep_sin_existencias]
+      MOV CX, 22H
+      MOV DX, offset reporte_titulo_fecha
+      MOV AH, 40H
+      INT 21
+
+      ; Se escribe el encabezado del archivo del reporte
+      MOV BX, [handle_rep_sin_existencias]
+      MOV CH, 00H
+      MOV CL, tam_encabezado_html
+      MOV DX, offset encabezado_html
+      MOV AH, 40H
+      INT 21
+
+      ; Se escribe la inicializacion de la tabla del archivo del reporte
+      MOV BX, [handle_rep_sin_existencias]
+      MOV CH, 00H
+      MOV CL, tam_inicializacion_tabla
+      MOV DX, offset inicializacion_tabla
+      MOV AH, 40H
+      INT 21
+
+      ; Se inicia con la lectura de ventas y escritura del reporte
+      @@reporte:
+
+        ; Leyendo una estructura de un producto
+        MOV BX, [handle_productos]
+        MOV CX, 28H
+        MOV DX, offset aux_prod_cod
+        MOV AH, 3FH
+        INT 21
+
+        CMP AX, 00
+        JZ @@cerrando_archivos
+        PUSH AX ; Se almacena la cantidad de caracteres leidos debido a que mCompCads utiliza AX
+
+        ; Se verifica si la unidad es 0 para mostrarlo en el reporte
+        CMP aux_prod_unidad, 0000H
+        JNZ @@siguiente
+
+          ; Se posiciona el puntero al final del archivo
+          MOV CX, 00
+          MOV DX, 00
+          MOV BX, [handle_rep_sin_existencias]
+          MOV AL, 02
+          MOV AH, 42
+          INT 21
+
+          ; Se escribe la etiqueta de inicializacion de la fila
+          MOV BX, [handle_rep_sin_existencias]
+          MOV CX, 00H
+          MOV CL, 04H
+          MOV DX, offset tr_html
+          MOV AH, 40H
+          INT 21
+
+          ; Etiqueta de apertura
+          MOV BX, [handle_rep_sin_existencias]
+          MOV CX, 00H
+          MOV CL, 04H
+          MOV DX, offset td_html
+          MOV AH, 40H
+          INT 21
+
+            ; Se escribe el codigo
+            MOV BX, [handle_rep_sin_existencias]
+            MOV CX, 00H
+            MOV CL, 04H
+            MOV DX, offset aux_prod_cod
+            MOV AH, 40H
+            INT 21
+
+          ; Etiqueta de cerrado
+          MOV BX, [handle_rep_sin_existencias]
+          MOV CX, 00H
+          MOV CL, 05H
+          MOV DX, offset tdc_html
+          MOV AH, 40H
+          INT 21
+
+          ; Etiqueta de apertura
+          MOV BX, [handle_rep_sin_existencias]
+          MOV CX, 00H
+          MOV CL, 04H
+          MOV DX, offset td_html
+          MOV AH, 40H
+          INT 21
+
+            ; Se escribe la descripcion
+            MOV BX, [handle_rep_sin_existencias]
+            MOV CX, 00H
+            MOV CL, 20H
+            MOV DX, offset aux_prod_descripcion
+            MOV AH, 40H
+            INT 21
+
+          ; Etiqueta de cerrado
+          MOV BX, [handle_rep_sin_existencias]
+          MOV CX, 00H
+          MOV CL, 05H
+          MOV DX, offset tdc_html
+          MOV AH, 40H
+          INT 21
+
+          ; Etiqueta de apertura
+          MOV BX, [handle_rep_sin_existencias]
+          MOV CX, 00H
+          MOV CL, 04H
+          MOV DX, offset td_html
+          MOV AH, 40H
+          INT 21
+
+            ; Se escribe el precio
+            mSetearValorAVar rep1_aux_cadena, 00H, 05H
+            mConvertNumeroACadena aux_prod_precio, rep1_aux_cadena
+            MOV BX, [handle_rep_sin_existencias]
+            MOV CX, 00H
+            MOV CL, 05H
+            MOV DX, offset rep1_aux_cadena
+            MOV AH, 40H
+            INT 21
+
+          ; Etiqueta de cerrado
+          MOV BX, [handle_rep_sin_existencias]
+          MOV CX, 00H
+          MOV CL, 05H
+          MOV DX, offset tdc_html
+          MOV AH, 40H
+          INT 21
+
+          ; Etiqueta de apertura
+          MOV BX, [handle_rep_sin_existencias]
+          MOV CX, 00H
+          MOV CL, 04H
+          MOV DX, offset td_html
+          MOV AH, 40H
+          INT 21
+
+            ; Se escribe las unidades
+            mSetearValorAVar rep1_aux_cadena, 00H, 05H
+            INT 03
+            mConvertNumeroACadena aux_prod_unidad, rep1_aux_cadena
+            MOV BX, [handle_rep_sin_existencias]
+            MOV CX, 00H
+            MOV CL, 05H
+            MOV DX, offset rep1_aux_cadena
+            MOV AH, 40H
+            INT 21
+
+          ; Etiqueta de cerrado
+          MOV BX, [handle_rep_sin_existencias]
+          MOV CX, 00H
+          MOV CL, 05H
+          MOV DX, offset tdc_html
+          MOV AH, 40H
+          INT 21
+
+          ; Se escribe la etiqueta de finalizacion de la fila
+          MOV BX, [handle_rep_sin_existencias]
+          MOV CX, 00H
+          MOV CL, 05H
+          MOV DX, offset trc_html
+          MOV AH, 40H
+          INT 21
+
+        @@siguiente:
+          POP AX ; Recupero el valor de AX de nuevo
+      JMP @@reporte
+
+
+      @@cerrando_archivos:
+        ; Se escribe la finalizacion de la tabla del archivo del reporte
+        MOV BX, [handle_rep_sin_existencias]
+        MOV CH, 00H
+        MOV CL, tam_cierre_tabla
+        MOV DX, offset cierre_tabla
+        MOV AH, 40H
+        INT 21
+
+        ; Se escribe el pie del archivo del reporte
+        MOV BX, [handle_rep_sin_existencias]
+        MOV CH, 00H
+        MOV CL, tam_pie_html
+        MOV DX, offset pie_html
+        MOV AH, 40H
+        INT 21
+
+        ; Cerrar archivo ventas
+        MOV BX, [handle_productos]
+        MOV AH, 3EH
+        INT 21
+        ; Cerrar archivo reporte
+        MOV BX, [handle_rep_sin_existencias]
+        MOV AH, 3EH
+        INT 21
+        JMP @@fin
+
+      @@error_existencia:
+        ; Cerrar archivo reporte
+        MOV BX, [handle_rep_sin_existencias]
+        MOV AH, 3EH
+        INT 21
+
+        ; Mensaje de advertencia
+        mImprimirVar msg_error_productos
+        mPausaE
+        JMP MENU_HERRAMIENTAS
+
+      @@fin:
+        mImprimirVar msg_util_2
+        mPausaE
+        JMP MENU_HERRAMIENTAS
+
+    REP_SIN_EXISTENCIAS ENDP
 
     SALIR PROC
       .EXIT
