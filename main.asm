@@ -394,6 +394,8 @@ mModificarUnidArchProd MACRO
   MOV BX, 0AH
   DIV BX
   MOV CX, AX
+  CMP CX, 00
+  JZ L_CERRAR_ARCHIVO
 
   ; Se obtiene la posicion en memoria
   MOV DI, offset venta_temporal
@@ -1135,6 +1137,7 @@ ENDM
   msg_venta_pro_l4 db "Codigo: ", "$"
   msg_venta_pro_l5 db "Unidades: ", "$"
   msg_venta_pro_l6 db "Por favor, confirme su venta (y|n): ", 0AH, 0DH, "$"
+  msg_venta_pro_l7 db "Monto total de la venta: ", "$"
   msg_error_pro_l1 db "ERROR: No existe el codigo del producto ingresado", 0AH, 0DH, "$"
   msg_error_pro_l2 db "ERROR: No hay unidades disponibles para vender", 0AH, 0DH, "$"
   opcion_venta_salir db "fin"
@@ -1145,7 +1148,7 @@ ENDM
   venta_aux_prod_unidad dw 0000 ; Se utiliza para almacenar la cantidad de unidades que se reduciran en un producto al realizar la venta
   venta_aux_total_num_unidad dw 0000 ; Se utilizara para ir sumando el total de producto que se ira a vender
   venta_pos_prod_modificar dw 0000 ; Se utiliza para determinar la posicion actual del producto a modificar
-  ; venta_num_total dw 0000
+  venta_num_total dw 0000
 
   ; Reporte catalogo completo
   tam_encabezado_html db 0CH
@@ -1185,8 +1188,8 @@ ENDM
   comando db 13 dup(?)
   msg_util_1 db 0AH, 0DH, " Presione ENTER para continuar...", 0AH, 0DH, "$"
   msg_util_2 db 0AH, 0DH, "Reporte generado correctamente", 0AH, 0DH, "$"
-  msg_error_formato db 0AH, 0DH, "El formato ingresado es incorrecto", 0AH, 0DH, "$"
-  msg_error_desbordamiento db 0AH, 0DH, "El valor ingresado no es compatible con la capacidad de la maquina", 0AH, 0DH, "$"
+  msg_error_formato db 0AH, 0DH, "ERROR: El formato ingresado es incorrecto", 0AH, 0DH, "$"
+  msg_error_desbordamiento db 0AH, 0DH, "ERROR: El valor ingresado no es compatible con la capacidad de la maquina", 0AH, 0DH, "$"
   msg_error_ventas db 0AH, 0DH, "ERROR: No se ha realizado ventas", 0AH, 0DH, "$"
   msg_error_productos db 0AH, 0DH, "ERROR: No se ha ingresado productos al sistema", 0AH, 0DH, "$"
   parseo_estado db 0 ; Indica el estado actual de la verificacion de una entrada a traves de consola - 0: Correcto ; 1:Parseo incorrecto ; 2:Desbordamiento
@@ -1821,7 +1824,6 @@ ENDM
           mSetearValorAVar venta_prod_unidad, 00H, 03H
           MOV venta_num_unidad, 0000
           MOV parseo_estado, 00
-          mPausaE
           POP CX
           JMP @@realizando_venta
 
@@ -1831,7 +1833,6 @@ ENDM
           mSetearValorAVar venta_prod_unidad, 00H, 03H
           MOV venta_num_unidad, 0000
           MOV parseo_estado, 00
-          mPausaE
           POP CX
           JMP @@realizando_venta
 
@@ -1841,7 +1842,6 @@ ENDM
           mSetearValorAVar venta_prod_unidad, 00H, 03H
           MOV venta_num_unidad, 00
           MOV venta_estado, 00
-          mPausaE
           POP CX
           JMP @@realizando_venta
 
@@ -1851,7 +1851,6 @@ ENDM
           mSetearValorAVar venta_prod_unidad, 00H, 03H
           MOV venta_num_unidad, 00
           MOV venta_estado, 00
-          mPausaE
           POP CX
           JMP @@realizando_venta
 
@@ -1870,7 +1869,16 @@ ENDM
           ; Limpiando las variables temporales
           mSetearValorAVar venta_prod_cod, 00H, 04H
           mSetearValorAVar venta_prod_unidad, 00H, 03H
+          MOV AH, 00
+          MOV AL, venta_num_unidad
+          ADD venta_num_total, AX
           MOV venta_num_unidad, 00
+
+          ; Imprimiendo el monto total de la venta
+          mImprimirVar msg_venta_pro_l7
+          mSetearValorAVar rep1_aux_cadena, 00H, 05H
+          mConvertNumeroACadena venta_num_total, rep1_aux_cadena
+          mImprimirCadena rep1_aux_cadena, 05H
 
           ; Se indica que ya ha sido ingresado un producto en memoria
           POP CX
@@ -1911,8 +1919,9 @@ ENDM
         mSetearValorAVar venta_indice, 00H, 02H
         mSetearValorAVar venta_prod_cod, 00H, 04H
         mSetearValorAVar venta_prod_unidad, 00H, 03H
-        MOV venta_num_unidad, 0000
+        MOV venta_num_unidad, 00
         MOV parseo_estado, 00
+        MOV venta_num_total, 0000
         JMP MENU_PRINCIPAL
 
     VENTAS ENDP
