@@ -1251,7 +1251,7 @@ ENDM
     ; Inicio del programa
     MAIN PROC
 
-      ; mLimpiarC
+      mLimpiarC
       mImprimirVar msg_l1
       mImprimirVar msg_l2
       mImprimirVar msg_l3
