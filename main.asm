@@ -1485,7 +1485,7 @@ ENDM
         MOV num_precio, 0000
         MOV num_unidad, 0000
         ; Regresando al menu de producto
-        JMP MENU_PRODUCTO
+        JMP MENU_PRINCIPAL
 
     CREAR_PRODUCTO ENDP
 
@@ -1588,7 +1588,7 @@ ENDM
       @@error_archivo:
         mImprimirVar error_eliminar_pro_1
         mPausaE
-        JMP MENU_PRODUCTO
+        JMP MENU_PRINCIPAL
 
       @@error_codigo_no_encontrado:
         mImprimirVar error_eliminar_pro_2
@@ -1652,7 +1652,7 @@ ENDM
         MOV num_unidad, 0000
 
         ; Retornando al menu de producto
-        JMP MENU_PRODUCTO
+        JMP MENU_PRINCIPAL
 
     ELIMINAR_PRODUCTO ENDP
 
@@ -1762,7 +1762,7 @@ ENDM
         MOV num_precio, 0000
         MOV num_unidad, 0000
         ; Regresando al menu de producto
-        JMP MENU_PRODUCTO
+        JMP MENU_PRINCIPAL
 
     MOSTRAR_PRODUCTO ENDP
 
@@ -2190,12 +2190,12 @@ ENDM
         ; Mensaje de advertencia
         mImprimirVar msg_error_productos
         mPausaE
-        JMP MENU_HERRAMIENTAS
+        JMP MENU_PRINCIPAL
 
       @@fin:
         mImprimirVar msg_util_2
         mPausaE
-        JMP MENU_HERRAMIENTAS
+        JMP MENU_PRINCIPAL
 
     REP_CATALOGO_COMPLETO ENDP
 
@@ -2431,12 +2431,13 @@ ENDM
         ; Mensaje de advertencia
         mImprimirVar msg_error_productos
         mPausaE
-        JMP MENU_HERRAMIENTAS
+        JMP MENU_PRINCIPAL
 
       @@fin:
+        mSetearValorAVar alfabeto_monto, 00H, 1AH
         mImprimirVar msg_util_2
         mPausaE
-        JMP MENU_HERRAMIENTAS
+        JMP MENU_PRINCIPAL
 
     REP_ABC ENDP
 
@@ -2928,12 +2929,12 @@ ENDM
         ; Mensaje de advertencia
         mImprimirVar msg_error_productos
         mPausaE
-        JMP MENU_HERRAMIENTAS
+        JMP MENU_PRINCIPAL
 
       @@fin:
         mImprimirVar msg_util_2
         mPausaE
-        JMP MENU_HERRAMIENTAS
+        JMP MENU_PRINCIPAL
 
     REP_SIN_EXISTENCIAS ENDP
 
