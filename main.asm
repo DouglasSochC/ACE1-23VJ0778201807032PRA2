@@ -884,6 +884,81 @@ mVerificarDispProd MACRO
 
 ENDM
 
+; S: Llenar Variable Reporte ABC
+; D: Se encarga de llenar la variable temporal 'alfabeto_monto' con la informacion que posee el archivo de los productos
+mLlenarVarRepABC MACRO
+
+  LOCAL L_LEER, L_CERRAR_ARCHIVO, L_MINUSCULA, L_MAYUSCULA, L_SIGUIENTE, L_FIN, L_TEST
+
+  ; Abriendo el archivo (para lectura)
+  MOV AL, 00
+  MOV AH, 3DH
+  MOV DX, offset arch_productos
+  INT 21
+  JC L_FIN ; Si ya existe el archivo se dirige a escribir los datos
+  MOV [handle_productos], AX ; Almacenando la direccion de memoria del archivo abierto
+
+  L_LEER:
+
+    ; Leyendo una estructura de producto
+    MOV BX, [handle_productos]
+    MOV CX, 28
+    MOV DX, offset aux_prod_cod
+    MOV AH, 3FH
+    INT 21
+
+    ; Si ya no lee mas estructuras de productos se sale del ciclo de lectura (L_LEER)
+    CMP AX, 00
+    JZ L_CERRAR_ARCHIVO
+
+    ; Se busca el primer caracter del codigo del producto
+    MOV SI, offset aux_prod_cod
+    MOV AL, [SI]
+
+    ; Se verifica si el caracter es mayor o igual a 'a'
+    CMP AL, 61H
+    JGE L_MINUSCULA
+
+    ; Se verifica si el caracter es mayor o igual a 'A'
+    CMP AL, 41H
+    JGE L_MAYUSCULA
+    JMP L_SIGUIENTE
+
+    L_MINUSCULA:
+      SUB AL, 61H
+      JMP L_SETEAR
+
+    L_MAYUSCULA:
+      SUB AL, 41H
+      JMP L_SETEAR
+
+    L_SETEAR:
+
+      ; Se obtiene en memoria la variable del alfabeto
+      MOV SI, offset alfabeto_monto
+      MOV BX, 02H
+      MUL BX
+
+      ; Se mueve a la posicion de la letra para obtener el valor a sumar
+      ADD SI, AX
+      MOV AX, [SI]
+      ADD AX, aux_prod_unidad
+      MOV [SI], AX
+
+    L_SIGUIENTE:
+
+  JMP L_LEER
+
+  L_CERRAR_ARCHIVO:
+    ; Cerrar archivo
+    MOV BX, [handle_productos]
+    MOV AH, 3EH
+    INT 21
+
+  L_FIN:
+
+ENDM
+
 ; ********
 ; INICIO
 ; ********
@@ -905,6 +980,7 @@ ENDM
   error_ini_ses_1 db 0AH, 0DH, "Acceso denegado", 0AH, 0DH, "$"
   error_ini_ses_2 db 0AH, 0DH, "Las credenciales son incorrectas", 0AH, 0DH, "$"
   msg_ini_ses_1 db 0AH, 0DH, "Acceso exitoso", 0AH, 0DH, "$"
+  encabezado db '[credenciales]'
   usuario db 'usuario = "dcatalan"'
   clave db 'clave = "201807032"'
   usu_encabezado db 0FH dup (0) ; Tamanio 15 (0FH)
@@ -993,10 +1069,12 @@ ENDM
   ; Reporte catalogo completo
   tam_encabezado_html db 0CH
   tam_inicializacion_tabla db 5EH
+  tam_inicializacion_tabla_abc db 32H
   tam_cierre_tabla db 08H
   tam_pie_html db 0EH
   encabezado_html db "<html><body>"
   inicializacion_tabla db '<table border="1"><tr><td>Codigo</td><td>Descripcion</td><td>Precio</td><td>Unidades</td></tr>'
+  inicializacion_tabla_abc db '<table border="1"><tr><td>Letra</td><td>Monto</td>'
   cierre_tabla db "</table>"
   pie_html db "</body></html>"
   td_html db "<td>"
@@ -1004,6 +1082,12 @@ ENDM
   tr_html db "<tr>"
   trc_html db "</tr>"
   rep1_aux_cadena db 05 dup(0) ; Utilizado para representar las unidades y precios de un producto
+
+  ; Reporte ABC -> Hay que recordar que son 26 letras ; 2 bytes = monto -> Estructura de 56 bytes
+  alfabeto_monto dw 1AH dup(0)
+  alfabeto_letra db 00
+  alfabeto_num_unidad dw 0000
+  alfabeto_prod_unidad db 05 dup(0)
 
   ; Estructura de ingreso para una venta
   venta_prod_cod db 04H dup(0)
@@ -1056,6 +1140,8 @@ ENDM
   handle_ventas dw 0000
   arch_rep_catalogo_completo db "CATALG.HTM",0
   handle_rep_catalogo_completo dw 0000
+  arch_rep_abc db "ABC.HTM",0
+  handle_rep_abc dw 0000
   arch_rep_sin_existencias db "FALTA.HTM",0
   handle_rep_sin_existencias dw 0000
 
@@ -1097,10 +1183,16 @@ ENDM
       MOV AH, 3FH
       INT 21
 
-      ; Se verifica que el usuario sea correcto
-      mCompCads usu_usuario, usuario, 14H
-      JE @@contrasenia
+      ; Se verifica que el encabezado sea correcto
+      mCompCads usu_encabezado, encabezado, 0EH
+      JE @@usuario
       JMP @@error_credenciales
+
+      @@usuario:
+        ; Se verifica que el usuario sea correcto
+        mCompCads usu_usuario, usuario, 14H
+        JE @@contrasenia
+        JMP @@error_credenciales
 
       ; Se verifica que la contrasenia sea correcta
       @@contrasenia:
@@ -1186,6 +1278,12 @@ ENDM
 
       mCompCads comando, opcion_herr_1, 1
       JE REP_CATALOGO_COMPLETO
+
+      mCompCads comando, opcion_herr_2, 1
+      JE REP_ABC
+
+      mCompCads comando, opcion_herr_3, 1
+      JE REP_VENTAS
 
       mCompCads comando, opcion_herr_4, 1
       JE REP_SIN_EXISTENCIAS
@@ -2004,6 +2102,251 @@ ENDM
 
     REP_CATALOGO_COMPLETO ENDP
 
+    REP_ABC PROC
+
+      ; Se elimina el archivo del reporte en el caso que ya exista
+      MOV AH, 41H
+      MOV DX, offset arch_rep_abc
+      INT 21
+
+      ; Creando nuevamente el archivo
+      MOV CX, 0000
+      MOV DX, offset arch_rep_abc
+      MOV AH, 3CH
+      INT 21
+
+      ; Almacenando la direccion de memoria del archivo abierto
+      MOV [handle_rep_abc], AX
+
+      ; Abriendo el archivo (para lectura)
+      MOV AL, 00
+      MOV AH, 3DH
+      MOV DX, offset arch_productos
+      INT 21
+      JC @@error_existencia ; Si no existe el archivo se dirige a enviar un mensaje de error
+
+      ; Almacenando la direccion de memoria del archivo abierto
+      MOV [handle_productos], AX
+
+      ; Llenando la informacion de los productos en la variable alfabeto_monto
+      mLlenarVarRepABC
+
+      ; Obteniendo FECHA COMPLETA
+      MOV AH, 2AH
+      INT 21
+
+      ; Almacenando el dia
+      MOV AX, 0000
+      MOV AL, DL
+      MOV reporte_aux_fecha, AX
+      PUSH CX
+      PUSH DX
+      mConvertNumeroACadena reporte_aux_fecha, reporte_dia
+      POP DX
+
+      ; Almacenando el mes
+      MOV AX, 0000
+      MOV AL, DH
+      MOV reporte_aux_fecha, AX
+      mConvertNumeroACadena reporte_aux_fecha, reporte_mes
+      POP CX
+
+      ; Almacenando el anio
+      SUB CX, 7D0H
+      MOV AX, 0000
+      MOV AL, CL
+      MOV reporte_aux_fecha, AX
+      mConvertNumeroACadena reporte_aux_fecha, reporte_anio
+
+      ; Se obtiene la HORA COMPLETA
+      MOV AH, 2CH
+      INT 21
+
+      ; Almacenando la hora
+      MOV AX, 0000
+      MOV AL, CH
+      MOV reporte_aux_fecha, AX
+      PUSH CX
+      mConvertNumeroACadena reporte_aux_fecha, reporte_hora
+      POP CX
+
+      ; Almacenando el minuto
+      MOV AX, 0000
+      MOV AL, CL
+      MOV reporte_aux_fecha, AX
+      mConvertNumeroACadena reporte_aux_fecha, reporte_minutos
+
+      ; Se escribe la fecha y hora de este reporte
+      MOV BX, [handle_rep_abc]
+      MOV CX, 22H
+      MOV DX, offset reporte_titulo_fecha
+      MOV AH, 40H
+      INT 21
+
+      ; Se escribe el encabezado del archivo del reporte
+      MOV BX, [handle_rep_abc]
+      MOV CH, 00H
+      MOV CL, tam_encabezado_html
+      MOV DX, offset encabezado_html
+      MOV AH, 40H
+      INT 21
+
+      ; Se escribe la inicializacion de la tabla del archivo del reporte
+      MOV BX, [handle_rep_abc]
+      MOV CH, 00H
+      MOV CL, tam_inicializacion_tabla_abc
+      MOV DX, offset inicializacion_tabla_abc
+      MOV AH, 40H
+      INT 21
+
+      ; Cantidad de letras a escribir en el reporte deben de ser 26 (1AH)
+      MOV CX, 00H
+      @@reporte:
+
+        PUSH CX
+
+        ; Se posiciona el puntero al final del archivo
+        MOV CX, 00
+        MOV DX, 00
+        MOV BX, [handle_rep_abc]
+        MOV AL, 02
+        MOV AH, 42
+        INT 21
+
+        ; Se escribe la etiqueta de inicializacion de la fila
+        MOV BX, [handle_rep_abc]
+        MOV CX, 00H
+        MOV CL, 04H
+        MOV DX, offset tr_html
+        MOV AH, 40H
+        INT 21
+
+        ; Etiqueta de apertura
+        MOV BX, [handle_rep_abc]
+        MOV CX, 00H
+        MOV CL, 04H
+        MOV DX, offset td_html
+        MOV AH, 40H
+        INT 21
+
+          ; Se obtiene el indice actual del ciclo para representar a la letra
+          POP CX
+          MOV AX, CX
+          PUSH CX
+          MOV alfabeto_letra, AL
+          ADD alfabeto_letra, 41H
+
+          ; Se escribe el letra
+          MOV BX, [handle_rep_abc]
+          MOV CX, 01H
+          MOV DX, offset alfabeto_letra
+          MOV AH, 40H
+          INT 21
+
+          mSetearValorAVar alfabeto_letra, 00H, 02H
+
+        ; Etiqueta de cerrado
+        MOV BX, [handle_rep_abc]
+        MOV CX, 00H
+        MOV CL, 05H
+        MOV DX, offset tdc_html
+        MOV AH, 40H
+        INT 21
+
+        ; Etiqueta de apertura
+        MOV BX, [handle_rep_abc]
+        MOV CX, 00H
+        MOV CL, 04H
+        MOV DX, offset td_html
+        MOV AH, 40H
+        INT 21
+
+          POP CX
+          MOV AX, CX
+          PUSH CX
+          MOV BX, 2
+          MUL BX
+
+          MOV DI, offset alfabeto_monto
+          ADD DI, AX
+
+          MOV AX, [DI]
+          MOV alfabeto_num_unidad, AX
+          mConvertNumeroACadena alfabeto_num_unidad, alfabeto_prod_unidad
+
+          ; Se escribe el monto
+          MOV BX, [handle_rep_abc]
+          MOV CX, 05H
+          MOV DX, offset alfabeto_prod_unidad
+          MOV AH, 40H
+          INT 21
+
+          mSetearValorAVar alfabeto_prod_unidad, 00, 05H
+
+        ; Etiqueta de cerrado
+        MOV BX, [handle_rep_abc]
+        MOV CX, 00H
+        MOV CL, 05H
+        MOV DX, offset tdc_html
+        MOV AH, 40H
+        INT 21
+
+        POP CX
+        INC CX
+      CMP CX, 1AH
+      JNZ @@reporte
+
+      @@cerrando_archivos:
+
+        ; Se escribe la finalizacion de la tabla del archivo del reporte
+        MOV BX, [handle_rep_abc]
+        MOV CH, 00H
+        MOV CL, tam_cierre_tabla
+        MOV DX, offset cierre_tabla
+        MOV AH, 40H
+        INT 21
+
+        ; Se escribe el pie del archivo del reporte
+        MOV BX, [handle_rep_abc]
+        MOV CH, 00H
+        MOV CL, tam_pie_html
+        MOV DX, offset pie_html
+        MOV AH, 40H
+        INT 21
+
+        ; Cerrar archivo productos
+        MOV BX, [handle_productos]
+        MOV AH, 3EH
+        INT 21
+
+        ; Cerrar archivo reporte
+        MOV BX, [handle_rep_abc]
+        MOV AH, 3EH
+        INT 21
+        JMP @@fin
+
+      @@error_existencia:
+        ; Cerrar archivo reporte
+        MOV BX, [handle_rep_abc]
+        MOV AH, 3EH
+        INT 21
+
+        ; Mensaje de advertencia
+        mImprimirVar msg_error_productos
+        mPausaE
+        JMP MENU_HERRAMIENTAS
+
+      @@fin:
+        mImprimirVar msg_util_2
+        mPausaE
+        JMP MENU_HERRAMIENTAS
+
+    REP_ABC ENDP
+
+    REP_VENTAS PROC
+
+    REP_VENTAS ENDP
+
     REP_SIN_EXISTENCIAS PROC
 
       ; Se elimina el archivo del reporte en el caso que ya exista
@@ -2216,7 +2559,6 @@ ENDM
 
             ; Se escribe las unidades
             mSetearValorAVar rep1_aux_cadena, 00H, 05H
-            INT 03
             mConvertNumeroACadena aux_prod_unidad, rep1_aux_cadena
             MOV BX, [handle_rep_sin_existencias]
             MOV CX, 00H
