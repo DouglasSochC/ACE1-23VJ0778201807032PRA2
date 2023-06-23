@@ -718,6 +718,87 @@ mConvertNumeroACadena MACRO val1, str1
 
 ENDM
 
+; S: Convertir Numero A Cadena Vacia
+; D: Se encarga de convertir un numero hexadecimal a su representacion en cadena, el str1 es la
+; variable que contendra la cadena, se dice que esta funcion es vacia ya que si encuentra el hexadecimal 00H
+; se seteara el hexadecimal de espacio (20H)
+; P1: val1 = Variable que representa el numero
+; P2: str1 = Variable en donde se almacenara la cadena
+; P3: sz = Tamanio de la cadena
+mConvertNumeroACadenaFecha MACRO val1, str1, sz
+
+  LOCAL L_DIVISION, L_ALMACENAR, L_SIGUIENTE, L_ESPACIO, L_FIN
+
+  ; Inicializando los registros que se utilizaran para la conversion
+  MOV AX, val1
+  LEA SI, str1
+  MOV CX, sz
+  MOV DX, 0000
+  MOV BX, 000AH ; 10 (0AH)
+
+  L_DIVISION:
+
+    ; Se realiza la division para obtener el residuo el cual se queda en DX
+    DIV BX
+    ; Se almacena el residuo para su posterior uso
+    PUSH DX
+    ; Seteo DX a 0
+    XOR DX, DX
+
+  LOOP L_DIVISION
+
+  MOV CX, sz
+  L_ALMACENAR:
+    ; Se obtiene el ultimo valor del DX
+    POP DX
+    CMP DX, 00
+    JE L_ESPACIO
+
+    ; Se le suma un valor de 30H (48) para indicar la representacion del caracter
+    ADD DX, 30
+    JMP L_SIGUIENTE
+
+    L_ESPACIO:
+      ; Se le suma un valor de 20H (32) para indicar el espacio
+      ADD DX, 30
+
+    L_SIGUIENTE:
+      MOV [SI], DL ; Se almacena el caracter en la posicion actual del 'str1'
+      INC SI ; Se incrementa en 1
+
+  LOOP L_ALMACENAR
+  JMP L_FIN
+
+  L_FIN:
+
+ENDM
+
+; S: Limpiar Valores Nulos de una Cadena
+; D: Se encarga quitar los hexadecimales 00H y setearlos como espacio (20H)
+; P1: val1 = Variable que representa la cadena
+; P2: sz = Tamanio de la cadena
+mLimpiarValoresNulosCadena MACRO val1, sz
+
+  LOCAL L_CICLO, L_ESPACIO, L_SIGUIENTE
+
+  MOV SI, offset val1
+  MOV CX, sz
+  L_CICLO:
+
+    MOV AL, [SI]
+    CMP AL, 00H
+    JE L_ESPACIO
+    JMP L_SIGUIENTE
+
+    L_ESPACIO:
+      MOV AL, 20H
+      MOV [SI], AL
+
+    L_SIGUIENTE:
+      INC SI
+  LOOP L_CICLO
+ENDM
+
 ; S: Convertir Cadena A Numero
 ; D: Se encarga de convertir una cadena en su representacion hexadecimal, el registro que contiene
 ; el resultado sera el AX
@@ -1081,6 +1162,11 @@ ENDM
   tdc_html db "</td>"
   tr_html db "<tr>"
   trc_html db "</tr>"
+  division_txt db 0AH, 0DH, "==========================================================", 0AH, 0DH
+  encabezado_fecha_txt db "Fecha: "
+  encabezado_cod_prod_txt db 0DH, "Codigo del producto: "
+  encabezado_monto_txt db 0DH, "Monto: "
+  salto_linea_txt db 0AH, 0DH
   rep1_aux_cadena db 05 dup(0) ; Utilizado para representar las unidades y precios de un producto
 
   ; Reporte ABC -> Hay que recordar que son 26 letras ; 2 bytes = monto -> Estructura de 56 bytes
@@ -1131,6 +1217,15 @@ ENDM
   aux_prod_unidad dw 0000
   aux_prod_vacio db 04 dup(0) ; Se utiliza para auxiliar al momento de verificar un espacio disponible en el archivo de productos
 
+  ; Estructura auxiliar de una venta
+  aux_venta_prod_dia db 00
+  aux_venta_prod_mes db 00
+  aux_venta_prod_anio db 00
+  aux_venta_prod_hora db 00
+  aux_venta_prod_minuto db 00
+  aux_venta_prod_cod db 04 dup(0)
+  aux_venta_prod_unidad db 00
+
   ; Archivos
   arch_credenciales db "PRA2.CNF",0
   handle_credenciales dw 0000
@@ -1144,6 +1239,8 @@ ENDM
   handle_rep_abc dw 0000
   arch_rep_sin_existencias db "FALTA.HTM",0
   handle_rep_sin_existencias dw 0000
+  arch_rep_ventas db "REP.TXT",0
+  handle_rep_ventas dw 0000
 
 .CODE
 .STARTUP
@@ -2344,7 +2441,214 @@ ENDM
     REP_ABC ENDP
 
     REP_VENTAS PROC
+      ; Se elimina el archivo del reporte en el caso que ya exista
+      MOV AH, 41H
+      MOV DX, offset arch_rep_ventas
+      INT 21
 
+      ; Creando nuevamente el archivo
+      MOV CX, 0000
+      MOV DX, offset arch_rep_ventas
+      MOV AH, 3CH
+      INT 21
+
+      ; Almacenando la direccion de memoria del archivo abierto
+      MOV [handle_rep_ventas], AX
+
+      ; Abriendo el archivo (para lectura)
+      MOV AL, 00
+      MOV AH, 3DH
+      MOV DX, offset arch_ventas
+      INT 21
+      JC @@error_existencia ; Si no existe el archivo se dirige a enviar un mensaje de error
+
+      ; Almacenando la direccion de memoria del archivo abierto
+      MOV [handle_ventas], AX
+
+      ; Obteniendo FECHA COMPLETA
+      MOV AH, 2AH
+      INT 21
+
+      ; Almacenando el dia
+      MOV AX, 0000
+      MOV AL, DL
+      MOV reporte_aux_fecha, AX
+      PUSH CX
+      PUSH DX
+      mConvertNumeroACadenaFecha reporte_aux_fecha, reporte_dia, 02H
+      POP DX
+
+      ; Almacenando el mes
+      MOV AX, 0000
+      MOV AL, DH
+      MOV reporte_aux_fecha, AX
+      mConvertNumeroACadenaFecha reporte_aux_fecha, reporte_mes, 02H
+      POP CX
+
+      ; Almacenando el anio
+      SUB CX, 7D0H
+      MOV AX, 0000
+      MOV AL, CL
+      MOV reporte_aux_fecha, AX
+      mConvertNumeroACadenaFecha reporte_aux_fecha, reporte_anio, 02H
+
+      ; Se obtiene la HORA COMPLETA
+      MOV AH, 2CH
+      INT 21
+
+      ; Almacenando la hora
+      MOV AX, 0000
+      MOV AL, CH
+      MOV reporte_aux_fecha, AX
+      PUSH CX
+      mConvertNumeroACadenaFecha reporte_aux_fecha, reporte_hora, 02H
+      POP CX
+
+      ; Almacenando el minuto
+      MOV AX, 0000
+      MOV AL, CL
+      MOV reporte_aux_fecha, AX
+      mConvertNumeroACadenaFecha reporte_aux_fecha, reporte_minutos, 02H
+
+      ; Se escribe la fecha y hora de este reporte
+      MOV BX, [handle_rep_ventas]
+      MOV CX, 22H
+      MOV DX, offset reporte_titulo_fecha
+      MOV AH, 40H
+      INT 21
+
+      ; Se inicia con la lectura de ventas y escritura del reporte
+      @@reporte:
+
+        ; Leyendo una estructura de una venta
+        MOV BX, [handle_ventas]
+        MOV CX, 0AH
+        MOV DX, offset aux_venta_prod_dia
+        MOV AH, 3FH
+        INT 21
+
+        CMP AX, 00
+        JZ @@cerrando_archivos
+
+        ; Se posiciona el puntero al final del archivo
+        MOV CX, 00
+        MOV DX, 00
+        MOV BX, [handle_rep_ventas]
+        MOV AL, 02
+        MOV AH, 42
+        INT 21
+
+        ; Se escribe la division
+        MOV BX, [handle_rep_ventas]
+        MOV CX, 3EH
+        MOV DX, offset division_txt
+        MOV AH, 40H
+        INT 21
+
+        ; Se escribe el encabezado de la fecha
+        MOV BX, [handle_rep_ventas]
+        MOV CX, 07H
+        MOV DX, offset encabezado_fecha_txt
+        MOV AH, 40H
+        INT 21
+
+        ; Seteando la fecha completa en las variables adecuadas
+        MOV AH, 00
+        MOV AL, aux_venta_prod_dia
+        MOV reporte_aux_fecha, AX
+        mConvertNumeroACadenaFecha reporte_aux_fecha, reporte_dia, 02H
+
+        MOV AH, 00
+        MOV AL, aux_venta_prod_mes
+        MOV reporte_aux_fecha, AX
+        mConvertNumeroACadenaFecha reporte_aux_fecha, reporte_mes, 02H
+
+        MOV AH, 00
+        MOV AL, aux_venta_prod_anio
+        MOV reporte_aux_fecha, AX
+        mConvertNumeroACadenaFecha reporte_aux_fecha, reporte_anio, 02H
+
+        MOV AH, 00
+        MOV AL, aux_venta_prod_hora
+        MOV reporte_aux_fecha, AX
+        mConvertNumeroACadenaFecha reporte_aux_fecha, reporte_hora, 02H
+
+        MOV AH, 00
+        MOV AL, aux_venta_prod_minuto
+        MOV reporte_aux_fecha, AX
+        mConvertNumeroACadenaFecha reporte_aux_fecha, reporte_minutos, 02H
+
+        ; Se escribe la fecha y hora de la venta realizada
+        MOV BX, [handle_rep_ventas]
+        MOV CX, 10H
+        MOV DX, offset reporte_dia
+        MOV AH, 40H
+        INT 21
+
+        ; Se escribe el encabezado del codigo del producto
+        MOV BX, [handle_rep_ventas]
+        MOV CX, 16H
+        MOV DX, offset encabezado_cod_prod_txt
+        MOV AH, 40H
+        INT 21
+
+          ; Se escribe la codigo del producto
+          mLimpiarValoresNulosCadena aux_venta_prod_cod, 04H
+          MOV BX, [handle_rep_ventas]
+          MOV CX, 04H
+          MOV DX, offset aux_venta_prod_cod
+          MOV AH, 40H
+          INT 21
+
+        ; Se escribe el encabezado del monto de la venta
+        MOV BX, [handle_rep_ventas]
+        MOV CX, 08H
+        MOV DX, offset encabezado_monto_txt
+        MOV AH, 40H
+        INT 21
+
+          ; Se escribe el monto del producto
+          mSetearValorAVar rep1_aux_cadena, 00H, 05H
+          MOV AH, 00
+          MOV AL, aux_venta_prod_unidad
+          mConvertNumeroACadena AX, rep1_aux_cadena
+          mLimpiarValoresNulosCadena rep1_aux_cadena, 05H
+          MOV BX, [handle_rep_ventas]
+          MOV CX, 00H
+          MOV CL, 05H
+          MOV DX, offset rep1_aux_cadena
+          MOV AH, 40H
+          INT 21
+      JMP @@reporte
+
+
+      @@cerrando_archivos:
+
+        ; Cerrar archivo ventas
+        MOV BX, [handle_ventas]
+        MOV AH, 3EH
+        INT 21
+        ; Cerrar archivo reporte
+        MOV BX, [handle_rep_ventas]
+        MOV AH, 3EH
+        INT 21
+        JMP @@fin
+
+      @@error_existencia:
+        ; Cerrar archivo reporte
+        MOV BX, [handle_rep_ventas]
+        MOV AH, 3EH
+        INT 21
+
+        ; Mensaje de advertencia
+        mImprimirVar msg_error_ventas
+        mPausaE
+        JMP MENU_PRINCIPAL
+
+      @@fin:
+        mImprimirVar msg_util_2
+        mPausaE
+        JMP MENU_PRINCIPAL
     REP_VENTAS ENDP
 
     REP_SIN_EXISTENCIAS PROC
