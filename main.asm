@@ -1046,14 +1046,14 @@ ENDM
 ; cod_a_buscar: Variable que contiene el codigo a encontrar
 mVerificarExistenciaCodigo MACRO cod_a_buscar
 
-  LOCAL L_ARCHIVO, L_LECTURA, L_EXISTE, L_FIN
+  LOCAL L_LECTURA, L_EXISTE, L_FIN
 
   ; Abriendo el archivo (lectura/escritura)
   MOV AL, 02
   MOV AH, 3DH
   MOV DX, offset arch_productos
   INT 21
-  JC L_ARCHIVO
+  JC L_FIN
 
   ; Almacenando la direccion de memoria del archivo abierto
   MOV [handle_productos], AX
@@ -1077,8 +1077,6 @@ mVerificarExistenciaCodigo MACRO cod_a_buscar
   JNZ L_LECTURA
   MOV parseo_estado, 00H
   JMP L_FIN
-
-  L_ARCHIVO:
 
   L_EXISTE:
     MOV parseo_estado, 01H
