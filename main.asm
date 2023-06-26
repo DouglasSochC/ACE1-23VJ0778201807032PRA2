@@ -1042,6 +1042,51 @@ mLlenarVarRepABC MACRO
 
 ENDM
 
+; D: Se encarga de verificar si existe el codigo ingresado
+; cod_a_buscar: Variable que contiene el codigo a encontrar
+mVerificarExistenciaCodigo MACRO cod_a_buscar
+
+  LOCAL L_ARCHIVO, L_LECTURA, L_EXISTE, L_FIN
+
+  ; Abriendo el archivo (lectura/escritura)
+  MOV AL, 02
+  MOV AH, 3DH
+  MOV DX, offset arch_productos
+  INT 21
+  JC L_ARCHIVO
+
+  ; Almacenando la direccion de memoria del archivo abierto
+  MOV [handle_productos], AX
+
+  L_LECTURA:
+
+    ; Leyendo una estructura de producto
+    MOV BX, [handle_productos]
+    MOV CX, 28
+    MOV DX, offset aux_prod_cod
+    MOV AH, 3FH
+    INT 21
+
+    PUSH AX ; Se almacena la cantidad de caracteres leidos debido a que mCompCads utiliza AX
+    mCompCads aux_prod_cod, cod_a_buscar, 04H
+    POP AX ; Recupero el valor de AX de nuevo
+    JE L_EXISTE
+
+    ; Si la estructura leida es diferente de 0 entonces no se ha llegado a la parte final del archivo
+    CMP AX, 00
+  JNZ L_LECTURA
+  MOV parseo_estado, 00H
+  JMP L_FIN
+
+  L_ARCHIVO:
+
+  L_EXISTE:
+    MOV parseo_estado, 01H
+
+  L_FIN:
+
+ENDM
+
 ; ********
 ; INICIO
 ; ********
@@ -1192,6 +1237,7 @@ ENDM
   msg_error_desbordamiento db 0AH, 0DH, "ERROR: El valor ingresado no es compatible con la capacidad de la maquina", 0AH, 0DH, "$"
   msg_error_ventas db 0AH, 0DH, "ERROR: No se ha realizado ventas", 0AH, 0DH, "$"
   msg_error_productos db 0AH, 0DH, "ERROR: No se ha ingresado productos al sistema", 0AH, 0DH, "$"
+  msg_error_cod_producto db 0AH, 0DH, "ERROR: Ya existe el codigo ingresado", 0AH, 0DH, "$"
   parseo_estado db 0 ; Indica el estado actual de la verificacion de una entrada a traves de consola - 0: Correcto ; 1:Parseo incorrecto ; 2:Desbordamiento
   reporte_aux_fecha dW 0000 ; Servira como registro auxiliar para almacenar los valores obtenidos para las fechas
   reporte_titulo_fecha db "Reporte generado: " ; 18 bytes
@@ -1408,6 +1454,9 @@ ENDM
       mValidarCodigo prod_cod
       CMP parseo_estado, 01
       JE @@error
+      mVerificarExistenciaCodigo prod_cod
+      CMP parseo_estado, 01H
+      JE @@error_existencia
       mImprimirVar salto_linea
 
       ; Pedir descripcion
@@ -1455,6 +1504,18 @@ ENDM
 
       @@error:
         mImprimirVar msg_error_formato
+        mSetearValorAVar prod_cod, 00H, 04H
+        mSetearValorAVar prod_descripcion, 00H, 20H
+        mSetearValorAVar prod_precio, 00H, 05H
+        mSetearValorAVar prod_unidad, 00H, 05H
+        MOV num_precio, 0000
+        MOV num_unidad, 0000
+        MOV parseo_estado, 00
+        mPausaE
+        JMP CREAR_PRODUCTO
+
+      @@error_existencia:
+        mImprimirVar msg_error_cod_producto
         mSetearValorAVar prod_cod, 00H, 04H
         mSetearValorAVar prod_descripcion, 00H, 20H
         mSetearValorAVar prod_precio, 00H, 05H
